@@ -1,1 +1,23 @@
-node_modules
+# зависимости
+node_modules/
+
+# окружение
+.env
+.env.local
+.env.development
+.env.production
+
+# лог-файлы
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# сборки
+build/
+dist/
+coverage/
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
