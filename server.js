@@ -76,18 +76,24 @@ app.post('/api/run-opt', async (req, res) => {
     const topSolutions = pareto.slice(0,5);
     const systemPrompt = {
       role: 'system',
-      content: 'You are an expert in engineering optimization. You will receive JSON of top Pareto solutions. Parse and interpret.'
+      content: 'You are an expert in engineering optimization. You will receive JSON of top Pareto solutions. Analyze and return your answer as a JSON object with fields: summary, trends, anomalies, recommendations.'
     };
     const userPrompt = {
       role: 'user',
-      content: 'Top 5 Pareto solutions JSON:\n```json\n' + JSON.stringify(topSolutions, null, 2) + '\n```\nSummarize trade-offs and next steps.'
+      content: `Analyze the following Pareto optimization data.\n1. Describe the main trends and patterns.\n2. Indicate if there are any anomalies or unexpected results.\n3. Give recommendations for choosing the optimal solution.\n4. Summarize your findings in 2-3 sentences.\nReturn your answer as a JSON object with the following fields: summary, trends, anomalies, recommendations.\nData: \n\json\n${JSON.stringify(topSolutions, null, 2)}\n\`
     };
     const chat = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
       messages: [systemPrompt, userPrompt]
     });
-    const explanations = [chat.choices[0].message.content.trim()];
+    let explanations;
+    try {
+      explanations = JSON.parse(chat.choices[0].message.content.trim());
+    } catch (e) {
+      // Если не удалось распарсить, выводим как есть
+      explanations = { summary: chat.choices[0].message.content.trim() };
+    }
     res.json({ pareto, explanations });
   } catch (err) {
     console.error(err);
