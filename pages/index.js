@@ -290,7 +290,7 @@ export default function CreatoriaWizard() {
               {renderResults()}
               {explanations && (
                 <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
-                  <h3 className="text-lg font-semibold mb-2">Анализ данных (OpenAI):</h3>
+                  <h3 className="text-lg font-semibold mb-2">AI Data Analysis:</h3>
                   {Array.isArray(explanations)
                     ? explanations.map((item, idx) => (
                         <p key={idx} className="mb-2 text-gray-200">{item}</p>
