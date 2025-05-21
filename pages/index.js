@@ -161,7 +161,7 @@ export default function CreatoriaWizard() {
     <div className="min-h-screen bg-[#0e1117] text-white p-6 mx-auto">
       <header className="flex flex-col items-center mb-8 mt-4">
         <div className="flex items-center">
-          <Image src="/logo_creatoria.png" alt="Logo" width={40} height={40} className="mr-4" />
+          <Image src="/favicon.png" alt="Logo" width={40} height={40} className="mr-4" />
           <div>
             <h1 className="text-3xl font-semibold">Creatoria Demo</h1>
             <p className="text-base">Smart assistant for invention and optimization</p>
@@ -240,7 +240,13 @@ export default function CreatoriaWizard() {
         {step === 2 && (
           <div className="flex justify-center">
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
-              <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() => setStep(1)}
+                  className="bg-gray-500 px-4 py-2 rounded hover:bg-gray-600 mr-4"
+                >
+                  ← Back
+                </button>
                 <h2 className="text-xl">Step 2: Configure Goals & Constraints</h2>
                 <span className="ml-2">⚙️</span>
               </div>
@@ -271,11 +277,28 @@ export default function CreatoriaWizard() {
         {step === 4 && (
           <div className="flex justify-center">
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full">
-              <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() => setStep(2)}
+                  className="bg-gray-500 px-4 py-2 rounded hover:bg-gray-600 mr-4"
+                >
+                  ← Back
+                </button>
                 <h2 className="text-xl">Step 4: Results</h2>
                 <span className="ml-2">📊</span>
               </div>
               {renderResults()}
+              {explanations && (
+                <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
+                  <h3 className="text-lg font-semibold mb-2">Анализ данных (OpenAI):</h3>
+                  {Array.isArray(explanations)
+                    ? explanations.map((item, idx) => (
+                        <p key={idx} className="mb-2 text-gray-200">{item}</p>
+                      ))
+                    : <p className="text-gray-200">{explanations}</p>
+                  }
+                </div>
+              )}
             </div>
           </div>
         )}
