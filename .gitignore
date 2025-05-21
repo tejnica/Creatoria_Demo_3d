@@ -13,6 +13,7 @@ yarn-error.log*
 # Сборка
 build/
 dist/
+.next/
 
 # Системные файлы
 .DS_Store
@@ -43,4 +44,7 @@ coverage/
 
 # Windows
 *.log
-*.tmp 
+*.tmp
+
+# Lock files
+pnpm-lock.yaml 

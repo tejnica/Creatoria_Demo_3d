@@ -1,9 +1,8 @@
-// src/App.js
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
-import logo from './logo_creatoria.png';
-import demoTasks from './demoTasks.json';
-import Stepper from './components/Stepper';
+import Image from 'next/image';
+import demoTasks from '../src/demoTasks.json';
+import Stepper from '../src/components/Stepper';
 
 export default function CreatoriaWizard() {
   const [step, setStep] = useState(1);
@@ -27,8 +26,6 @@ export default function CreatoriaWizard() {
     }
     return String(item);
   }
-
- 
 
   // Step 1: Generate YAML from description
   const handleGenerateYaml = async () => {
@@ -162,7 +159,7 @@ export default function CreatoriaWizard() {
     <div className="min-h-screen bg-[#0e1117] text-white p-6 mx-auto">
       <header className="flex flex-col items-center mb-8 mt-4">
         <div className="flex items-center">
-          <img src={logo} alt="Logo" className="h-10 mr-4" />
+          <Image src="/logo_creatoria.png" alt="Logo" width={40} height={40} className="mr-4" />
           <div>
             <h1 className="text-3xl font-semibold">Creatoria Demo</h1>
             <p className="text-base">Smart assistant for invention and optimization</p>
@@ -171,9 +168,9 @@ export default function CreatoriaWizard() {
       </header>
 
       <Stepper
-      step={step}
-      steps={['Step 1', 'Step 2', 'Step 3', 'Step 4']}
-    />
+        step={step}
+        steps={['Step 1', 'Step 2', 'Step 3', 'Step 4']}
+      />
 
       {/* Steps container with indent */}
       <div className="pl-4">
@@ -248,24 +245,22 @@ export default function CreatoriaWizard() {
               <div className="mb-4">
                 <h3 className="font-medium mb-2">Goals</h3>
                 {goalVariables.map((g, i) => (
-                  <input key={i} type="text" className="w-full p-3 mb-3 bg-gray-800 rounded" value={g} onChange={e => { const a=[...goalVariables]; a[i]=e.target.value; setGoalVariables(a); }} />
+                  <div key={i} className="bg-gray-800 p-3 rounded mb-2">{g}</div>
                 ))}
               </div>
               <div className="mb-4">
                 <h3 className="font-medium mb-2">Constraints</h3>
                 {constraints.map((c, i) => (
-                  <input key={i} type="text" className="w-full p-3 mb-3 bg-gray-800 rounded" value={c} onChange={e => { const a=[...constraints]; a[i]=e.target.value; setConstraints(a); }} />
+                  <div key={i} className="bg-gray-800 p-3 rounded mb-2">{c}</div>
                 ))}
               </div>
-              <div className="flex space-x-2">
-                <button onClick={() => setStep(1)} className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">← Back</button>
-                <button onClick={runOptimization} disabled={running} className="bg-green-600 px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50">{running ? 'Running…' : 'Run Optimization →'}</button>
-              </div>
-              {running && (
-                <div className="mt-2 w-full bg-gray-700 h-4 rounded overflow-hidden">
-                  <div className="bg-green-400 h-full transition-all duration-200" style={{ width: `${progress}%` }} />
-                </div>
-              )}
+              <button
+                onClick={runOptimization}
+                disabled={running}
+                className={`w-full py-2 rounded ${running ? 'bg-gray-500' : 'bg-green-500 hover:bg-green-600'}`}
+              >
+                {running ? `Running... ${progress}%` : 'Run Optimization'}
+              </button>
             </div>
           </div>
         )}
@@ -273,21 +268,16 @@ export default function CreatoriaWizard() {
         {/* Step 4: Results */}
         {step === 4 && (
           <div className="flex justify-center">
-            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
+            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full">
               <div className="flex items-center justify-center mb-4">
-                <h2 className="text-xl">Step 4: Explore Results</h2>
-                <span className="ml-2">📈</span>
+                <h2 className="text-xl">Step 4: Results</h2>
+                <span className="ml-2">📊</span>
               </div>
               {renderResults()}
-              <div className="mt-6">
-                <h3 className="text-lg mb-2">AI Explanations</h3>
-                {explanations.map((e, i) => <p key={i} className="mb-2">• {e}</p>)}
-              </div>
-              <button onClick={() => setStep(2)} className="mt-4 bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">← Back to Config</button>
             </div>
           </div>
         )}
       </div>
     </div>
   );
-}
+} 
