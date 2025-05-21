@@ -1,0 +1,130 @@
+{
+  "heat-exchanger": {
+    "description": "Optimize a tube-and-shell heat exchanger for an EV battery pack to maximize heat flux while minimizing pressure drop and volume.",
+    "goals": [
+      "maximize heat flux (W)",
+      "minimize pressure drop (kPa)",
+      "minimize volume (cm³)"
+    ],
+    "constraints": [
+      "pressure drop ≤ 200 kPa",
+      "inlet temperature 25–40 °C",
+      "mass ≤ 1.5 kg",
+      "cost ≤ 50 €"
+    ],
+    "pareto": [
+      { "heatFlux": 680, "pressureDrop": 180, "volume": 1000, "id": "A" },
+      { "heatFlux": 640, "pressureDrop": 160, "volume": 950,  "id": "B" },
+      { "heatFlux": 600, "pressureDrop": 140, "volume": 900,  "id": "C" },
+      { "heatFlux": 560, "pressureDrop": 120, "volume": 850,  "id": "D" },
+      { "heatFlux": 520, "pressureDrop": 100, "volume": 800,  "id": "E" }
+    ],
+    "explanations": [
+      "Higher heat flux corresponds to increased pressure drop due to finer tube spacing.",
+      "Lower pressure configurations have larger volume to compensate for flow resistance.",
+      "Compact designs sacrifice peak heat flux but remain within constraints.",
+      "Recommendation: conduct parametric study on tube diameter and spacing to optimize heat transfer vs. pressure drop."
+    ]
+  },
+  "composite-bracket": {
+    "description": "Design a lightweight composite bracket for aerospace applications to maximize stiffness while keeping mass under 50 g and cost under $100.",
+    "goals": [
+      "maximize stiffness (GPa)",
+      "minimize mass (g)",
+      "minimize cost ($)"
+    ],
+    "constraints": [
+      "mass ≤ 50 g",
+      "cost ≤ 100 $",
+      "load capacity ≥ 5 kN"
+    ],
+    "pareto": [
+      { "stiffness": 15.2, "mass": 48.0, "cost": 95.0, "id": "A" },
+      { "stiffness": 14.8, "mass": 46.5, "cost": 98.0, "id": "B" },
+      { "stiffness": 13.5, "mass": 44.0, "cost": 90.0, "id": "C" },
+      { "stiffness": 12.0, "mass": 42.5, "cost": 85.0, "id": "D" },
+      { "stiffness": 10.5, "mass": 40.0, "cost": 80.0, "id": "E" }
+    ],
+    "explanations": [
+      "Bracket A achieves highest stiffness at slightly higher cost and mass.",
+      "Bracket B reduces mass further with minor stiffness penalty.",
+      "Bracket E is the most cost-effective but least stiff.",
+      "Recommendation: explore hybrid layup patterns to boost stiffness without raising mass."
+    ]
+  },
+  "beam-topology": {
+    "description": "Optimize the topology of a 6 m steel beam for a bridge to minimize material usage and maximize critical buckling load.",
+    "goals": [
+      "minimize steel mass (kg)",
+      "maximize critical buckling load (kN)"
+    ],
+    "constraints": [
+      "span load ≤ 500 kN",
+      "max deflection ≤ span/400",
+      "fatigue life ≥ 1e6 cycles"
+    ],
+    "pareto": [
+      { "steelMass": 280, "bucklingLoad": 520, "id": "A" },
+      { "steelMass": 260, "bucklingLoad": 500, "id": "B" },
+      { "steelMass": 240, "bucklingLoad": 480, "id": "C" },
+      { "steelMass": 220, "bucklingLoad": 450, "id": "D" },
+      { "steelMass": 200, "bucklingLoad": 400, "id": "E" }
+    ],
+    "explanations": [
+      "Solution A uses most steel for highest buckling load.",
+      "Solution E is lightest but has lowest critical load.",
+      "Intermediate solutions offer balanced trade-offs.",
+      "Recommendation: refine cutout patterns to reduce weight while preserving buckling capacity."
+    ]
+  },
+  "drone-wing": {
+    "description": "Optimize the wing airfoil shape for a UAV to minimize drag coefficient and maximize lift at 60 m/s cruise.",
+    "goals": [
+      "minimize drag coefficient Cd",
+      "maximize lift (N)"
+    ],
+    "constraints": [
+      "wing span ≤ 1.5 m",
+      "angle of attack ≤ 10°",
+      "thickness ≥ 5 mm"
+    ],
+    "pareto": [
+      { "Cd": 0.020, "lift": 150, "id": "A" },
+      { "Cd": 0.023, "lift": 160, "id": "B" },
+      { "Cd": 0.025, "lift": 170, "id": "C" },
+      { "Cd": 0.028, "lift": 180, "id": "D" },
+      { "Cd": 0.030, "lift": 190, "id": "E" }
+    ],
+    "explanations": [
+      "Wing A has lowest drag but moderate lift.",
+      "Wing E gives highest lift at cost of increased drag.",
+      "Mid-range designs balance drag and lift.",
+      "Recommendation: apply leading-edge control surfaces to optimize both metrics in flight."
+    ]
+  },
+  "maintenance-schedule": {
+    "description": "Develop a preventive maintenance schedule for factory machines to minimize downtime and cost.",
+    "goals": [
+      "minimize downtime (hours)",
+      "minimize maintenance cost (€)"
+    ],
+    "constraints": [
+      "each machine serviced at least once every 30 days",
+      "max concurrent downtime ≤ 2 machines",
+      "crew capacity 16 hours/day"
+    ],
+    "pareto": [
+      { "downtime": 120, "cost": 4000, "id": "A" },
+      { "downtime": 140, "cost": 3500, "id": "B" },
+      { "downtime": 160, "cost": 3200, "id": "C" },
+      { "downtime": 180, "cost": 3000, "id": "D" },
+      { "downtime": 200, "cost": 2800, "id": "E" }
+    ],
+    "explanations": [
+      "Schedule A minimizes downtime at highest cost.",
+      "Schedule E minimizes cost but has longest downtime.",
+      "Intermediate schedules offer trade-offs.",
+      "Recommendation: optimize crew allocation and stagger service times to reduce downtime without extra cost."
+    ]
+  }
+}
