@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import Plot from 'react-plotly.js';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import demoTasks from '../src/demoTasks.json';
 import Stepper from '../src/components/Stepper';
+
+const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
 export default function CreatoriaWizard() {
   const [step, setStep] = useState(1);
