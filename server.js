@@ -97,9 +97,30 @@ app.post('/api/run-opt', async (req, res) => {
       } else {
         explanations = JSON.parse(content);
       }
-      // Если вдруг вернулся массив, превращаем его в summary
+      // Если вдруг вернулся массив, распределяем строки по полям
       if (Array.isArray(explanations)) {
-        explanations = { summary: explanations.join(' ') };
+        let summary = [];
+        let trends = [];
+        let anomalies = [];
+        let recommendations = [];
+        explanations.forEach(str => {
+          const s = str.trim();
+          if (/^recommendation[:\-]/i.test(s)) {
+            recommendations.push(s.replace(/^recommendation[:\-]\s*/i, ''));
+          } else if (/trend/i.test(s)) {
+            trends.push(s);
+          } else if (/anomal/i.test(s)) {
+            anomalies.push(s);
+          } else {
+            summary.push(s);
+          }
+        });
+        explanations = {
+          summary: summary.join(' '),
+          trends: trends.join(' '),
+          anomalies: anomalies.join(' '),
+          recommendations: recommendations.join(' ')
+        };
       }
     } catch (e) {
       explanations = { summary: content };

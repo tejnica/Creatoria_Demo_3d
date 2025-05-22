@@ -318,10 +318,13 @@ export default function CreatoriaWizard() {
                 <span className="ml-2">📊</span>
               </div>
               {renderResults()}
-              {explanations && explanations.summary && (
+              {explanations && (
                 <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
                   <h3 className="text-lg font-semibold mb-2">AI Data Summary:</h3>
-                  <p className="text-gray-200">{explanations.summary}</p>
+                  {Array.isArray(explanations)
+                    ? <p className="text-gray-200">{explanations.join(' ')}</p>
+                    : <p className="text-gray-200">{explanations.summary}</p>
+                  }
                 </div>
               )}
               <div className="flex justify-end mt-6">
