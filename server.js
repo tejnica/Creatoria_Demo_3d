@@ -76,11 +76,11 @@ app.post('/api/run-opt', async (req, res) => {
     const topSolutions = pareto.slice(0,5);
     const systemPrompt = {
       role: 'system',
-      content: 'You are an expert in engineering optimization. You will receive JSON of top Pareto solutions. Analyze and return ONLY valid JSON with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON.'
+      content: 'You are an expert in engineering optimization. You will receive JSON of top Pareto solutions. Analyze and return ONLY valid JSON object with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON. Do not return an array, return an object with these fields.'
     };
     const userPrompt = {
       role: 'user',
-      content: `Analyze the following Pareto optimization data.\n1. Describe the main trends and patterns.\n2. Indicate if there are any anomalies or unexpected results.\n3. Give recommendations for choosing the optimal solution.\n4. Summarize your findings in 2-3 sentences.\nReturn ONLY valid JSON with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON.\nData: ${JSON.stringify(topSolutions, null, 2)}`
+      content: `Analyze the following Pareto optimization data.\n1. Describe the main trends and patterns.\n2. Indicate if there are any anomalies or unexpected results.\n3. Give recommendations for choosing the optimal solution.\n4. Summarize your findings in 2-3 sentences.\nReturn ONLY valid JSON object with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON. Do not return an array, return an object with these fields.\nData: ${JSON.stringify(topSolutions, null, 2)}`
     };
     const chat = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -96,6 +96,10 @@ app.post('/api/run-opt', async (req, res) => {
         explanations = JSON.parse(jsonMatch[0]);
       } else {
         explanations = JSON.parse(content);
+      }
+      // Если вдруг вернулся массив, превращаем его в summary
+      if (Array.isArray(explanations)) {
+        explanations = { summary: explanations.join(' ') };
       }
     } catch (e) {
       explanations = { summary: content };
