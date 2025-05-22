@@ -15,6 +15,7 @@ export default function CreatoriaWizard() {
   const [constraints, setConstraints] = useState([]);
   const [resultData, setResultData] = useState([]);
   const [explanations, setExplanations] = useState([]);
+  const [fullAnalysis, setFullAnalysis] = useState(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -85,12 +86,41 @@ export default function CreatoriaWizard() {
         setProgress(100);
         setResultData(res.pareto);
         setExplanations(res.explanations);
-        setStep(4);
+        setStep(3);
       })
       .catch(err => {
         clearInterval(interval);
         setRunning(false);
         alert('Optimization error: ' + err.message);
+      });
+  };
+
+  // Step 3: Request full analysis
+  const handleFullAnalysis = async () => {
+    setRunning(true);
+    setProgress(0);
+    const interval = setInterval(() => setProgress(p => Math.min(100, p + 20)), 300);
+    const payload = taskKey
+      ? { taskKey }
+      : { goals: goalVariables, constraints };
+    fetch('/api/run-opt', {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(r => r.json())
+      .then(res => {
+        clearInterval(interval);
+        setRunning(false);
+        setProgress(100);
+        setFullAnalysis(res.explanations);
+        setStep(4);
+      })
+      .catch(err => {
+        clearInterval(interval);
+        setRunning(false);
+        alert('AI analysis error: ' + err.message);
       });
   };
 
@@ -243,7 +273,7 @@ export default function CreatoriaWizard() {
               <div className="flex items-center justify-between mb-4">
                 <button
                   onClick={() => setStep(1)}
-                  className="bg-gray-500 px-4 py-2 rounded hover:bg-gray-600 mr-4"
+                  className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4"
                 >
                   ← Back
                 </button>
@@ -273,30 +303,68 @@ export default function CreatoriaWizard() {
           </div>
         )}
 
-        {/* Step 4: Results */}
-        {step === 4 && (
+        {/* Step 3: Results + краткий анализ */}
+        {step === 3 && (
           <div className="flex justify-center">
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full">
               <div className="flex items-center justify-between mb-4">
                 <button
                   onClick={() => setStep(2)}
-                  className="bg-gray-500 px-4 py-2 rounded hover:bg-gray-600 mr-4"
+                  className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4"
                 >
                   ← Back
                 </button>
-                <h2 className="text-xl">Step 4: Results</h2>
+                <h2 className="text-xl">Step 3: Results</h2>
                 <span className="ml-2">📊</span>
               </div>
               {renderResults()}
-              {explanations && (
+              {explanations && explanations.summary && (
+                <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
+                  <h3 className="text-lg font-semibold mb-2">AI Data Summary:</h3>
+                  <p className="text-gray-200">{explanations.summary}</p>
+                </div>
+              )}
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={handleFullAnalysis}
+                  className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500"
+                >
+                  Расширенный анализ
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Full AI Analysis */}
+        {step === 4 && (
+          <div className="flex justify-center">
+            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full">
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() => setStep(3)}
+                  className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4"
+                >
+                  ← Back
+                </button>
+                <h2 className="text-xl">Step 4: AI Data Analysis</h2>
+                <span className="ml-2">🧠</span>
+              </div>
+              {fullAnalysis && (
                 <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
                   <h3 className="text-lg font-semibold mb-2">AI Data Analysis:</h3>
-                  {Array.isArray(explanations)
-                    ? explanations.map((item, idx) => (
-                        <p key={idx} className="mb-2 text-gray-200">{item}</p>
-                      ))
-                    : <p className="text-gray-200">{explanations}</p>
-                  }
+                  {fullAnalysis.summary && (
+                    <p className="mb-2 text-gray-200"><b>Summary:</b> {fullAnalysis.summary}</p>
+                  )}
+                  {fullAnalysis.trends && (
+                    <p className="mb-2 text-gray-200"><b>Trends:</b> {fullAnalysis.trends}</p>
+                  )}
+                  {fullAnalysis.anomalies && (
+                    <p className="mb-2 text-gray-200"><b>Anomalies:</b> {fullAnalysis.anomalies}</p>
+                  )}
+                  {fullAnalysis.recommendations && (
+                    <p className="mb-2 text-gray-200"><b>Recommendations:</b> {fullAnalysis.recommendations}</p>
+                  )}
                 </div>
               )}
             </div>
