@@ -332,7 +332,7 @@ export default function CreatoriaWizard() {
                   onClick={handleFullAnalysis}
                   className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500"
                 >
-                  Расширенный анализ
+                  Full Analysis
                 </button>
               </div>
             </div>
@@ -350,12 +350,12 @@ export default function CreatoriaWizard() {
                 >
                   ← Back
                 </button>
-                <h2 className="text-xl">Step 4: AI Data Analysis</h2>
+                <h2 className="text-xl">Full AI Data Analysis</h2>
                 <span className="ml-2">🧠</span>
               </div>
               {fullAnalysis && (
                 <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
-                  <h3 className="text-lg font-semibold mb-2">AI Data Analysis:</h3>
+                  <h3 className="text-lg font-semibold mb-2">Full AI Data Analysis:</h3>
                   {fullAnalysis.summary && (
                     <p className="mb-2 text-gray-200"><b>Summary:</b> {fullAnalysis.summary}</p>
                   )}
@@ -370,7 +370,6 @@ export default function CreatoriaWizard() {
                   )}
                 </div>
               )}
-              <pre className="text-xs text-gray-400">{JSON.stringify(fullAnalysis, null, 2)}</pre>
             </div>
           </div>
         )}
