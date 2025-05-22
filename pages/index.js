@@ -136,32 +136,80 @@ export default function CreatoriaWizard() {
     if (numericKeys.length === 1) {
       const k = numericKeys[0];
       plotArea = (
-        <Plot
-          data={[{ x: top5.map((_, i) => i + 1), y: top5.map(p => p[k]), type: 'bar', marker: { color: '#FFAA00' } }]}
-          layout={{ title: k, paper_bgcolor: '#0e1117', plot_bgcolor: '#0e1117', font: { color: '#fff' } }}
-          style={{ width: '100%', height: '40vh' }}
-          config={{ responsive: true }}
-        />
+        <div className="w-full max-w-full overflow-x-auto" style={{ minWidth: 0 }}>
+          <Plot
+            data={[{ x: top5.map((_, i) => i + 1), y: top5.map(p => p[k]), type: 'bar', marker: { color: '#FFAA00' } }]}
+            layout={{
+              title: k,
+              paper_bgcolor: '#0e1117',
+              plot_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              autosize: true,
+              margin: { l: 30, r: 10, t: 30, b: 30 },
+            }}
+            style={{
+              width: '100vw',
+              maxWidth: '100%',
+              height: '40vh',
+              minHeight: 220,
+            }}
+            config={{ responsive: true }}
+          />
+        </div>
       );
     } else if (numericKeys.length === 2) {
       const [k1, k2] = numericKeys;
       plotArea = (
-        <Plot
-          data={[{ x: resultData.map(p => p[k1]), y: resultData.map(p => p[k2]), mode: 'markers', type: 'scatter', marker: { color: '#FFAA00' } }]}
-          layout={{ xaxis: { title: k1, color: '#fff' }, yaxis: { title: k2, color: '#fff' }, paper_bgcolor: '#0e1117', plot_bgcolor: '#0e1117', font: { color: '#fff' } }}
-          style={{ width: '100%', height: '40vh' }}
-          config={{ responsive: true }}
-        />
+        <div className="w-full max-w-full overflow-x-auto" style={{ minWidth: 0 }}>
+          <Plot
+            data={[{ x: resultData.map(p => p[k1]), y: resultData.map(p => p[k2]), mode: 'markers', type: 'scatter', marker: { color: '#FFAA00' } }]}
+            layout={{
+              xaxis: { title: k1, color: '#fff' },
+              yaxis: { title: k2, color: '#fff' },
+              paper_bgcolor: '#0e1117',
+              plot_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              autosize: true,
+              margin: { l: 30, r: 10, t: 30, b: 30 },
+            }}
+            style={{
+              width: '100vw',
+              maxWidth: '100%',
+              height: '40vh',
+              minHeight: 220,
+            }}
+            config={{ responsive: true }}
+          />
+        </div>
       );
     } else {
       const [k1, k2, k3] = numericKeys.slice(0, 3);
       plotArea = (
-        <Plot
-          data={[{ x: resultData.map(p => p[k1]), y: resultData.map(p => p[k2]), z: resultData.map(p => p[k3]), mode: 'markers', type: 'scatter3d', marker: { size: 6, color: '#FFAA00' } }]}
-          layout={{ scene: { xaxis: { title: k1, color: '#fff', gridcolor: '#444' }, yaxis: { title: k2, color: '#fff', gridcolor: '#444' }, zaxis: { title: k3, color: '#fff', gridcolor: '#444' } }, paper_bgcolor: '#0e1117', plot_bgcolor: '#0e1117', font: { color: '#fff' }, height: 600 }}
-          style={{ width: '100%', height: '60vh' }}
-          config={{ responsive: true }}
-        />
+        <div className="w-full max-w-full overflow-x-auto" style={{ minWidth: 0 }}>
+          <Plot
+            data={[{ x: resultData.map(p => p[k1]), y: resultData.map(p => p[k2]), z: resultData.map(p => p[k3]), mode: 'markers', type: 'scatter3d', marker: { size: 6, color: '#FFAA00' } }]}
+            layout={{
+              scene: {
+                xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
+                yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
+                zaxis: { title: k3, color: '#fff', gridcolor: '#444' },
+              },
+              paper_bgcolor: '#0e1117',
+              plot_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              height: 600,
+              autosize: true,
+              margin: { l: 30, r: 10, t: 30, b: 30 },
+            }}
+            style={{
+              width: '100vw',
+              maxWidth: '100%',
+              height: '60vh',
+              minHeight: 440,
+            }}
+            config={{ responsive: true }}
+          />
+        </div>
       );
     }
 
