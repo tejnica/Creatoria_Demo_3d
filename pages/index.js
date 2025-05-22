@@ -367,6 +367,7 @@ export default function CreatoriaWizard() {
                   )}
                 </div>
               )}
+              <pre className="text-xs text-gray-400">{JSON.stringify(fullAnalysis, null, 2)}</pre>
             </div>
           </div>
         )}
