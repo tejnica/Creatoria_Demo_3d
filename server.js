@@ -1,4 +1,5 @@
-// server.js
+// server.js  
+// redeploy test 2025-05-22)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -64,9 +65,37 @@ app.post('/api/run-opt', async (req, res) => {
     // If demo task key provided, return precomputed demo
     if (taskKey && demoTasks[taskKey]) {
       const demo = demoTasks[taskKey];
+      let explanations = demo.explanations;
+      if (Array.isArray(explanations)) {
+        let summary = [];
+        let trends = [];
+        let anomalies = [];
+        let recommendations = [];
+        explanations.forEach(str => {
+          const s = str.trim();
+          if (/^recommendation[:\-]/i.test(s)) {
+            recommendations.push(s.replace(/^recommendation[:\-]\s*/i, ''));
+          } else if (/^trend[:\-]/i.test(s) || /pattern/i.test(s)) {
+            trends.push(s.replace(/^trend[:\-]\s*/i, ''));
+          } else if (/anomal/i.test(s) || /unexpected|outlier/i.test(s)) {
+            anomalies.push(s);
+          } else if (/summary/i.test(s)) {
+            summary.push(s.replace(/^summary[:\-]\s*/i, ''));
+          } else {
+            if (s.length < 80) summary.push(s);
+            else trends.push(s);
+          }
+        });
+        explanations = {
+          summary: summary.join(' '),
+          trends: trends.join(' '),
+          anomalies: anomalies.join(' '),
+          recommendations: recommendations.join(' ')
+        };
+      }
       return res.json({
         pareto: demo.pareto,
-        explanations: demo.explanations,
+        explanations,
         demoGoals: demo.goals,
         demoConstraints: demo.constraints
       });
