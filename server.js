@@ -107,12 +107,16 @@ app.post('/api/run-opt', async (req, res) => {
           const s = str.trim();
           if (/^recommendation[:\-]/i.test(s)) {
             recommendations.push(s.replace(/^recommendation[:\-]\s*/i, ''));
-          } else if (/trend/i.test(s)) {
-            trends.push(s);
-          } else if (/anomal/i.test(s)) {
+          } else if (/^trend[:\-]/i.test(s) || /pattern/i.test(s)) {
+            trends.push(s.replace(/^trend[:\-]\s*/i, ''));
+          } else if (/anomal/i.test(s) || /unexpected|outlier/i.test(s)) {
             anomalies.push(s);
+          } else if (/summary/i.test(s)) {
+            summary.push(s.replace(/^summary[:\-]\s*/i, ''));
           } else {
-            summary.push(s);
+            // fallback: если строка короткая — summary, длинная — trend
+            if (s.length < 80) summary.push(s);
+            else trends.push(s);
           }
         });
         explanations = {
