@@ -1,4 +1,14 @@
-﻿import React, { useState } from 'react';
+﻿// ==============================================================================
+// Файл: pages/index.js
+// Версия: Финальная, отлаженная, с восстановленным UI
+//
+// Изменения:
+// 1. Полностью восстановлена ваша оригинальная JSX-разметка для всех шагов.
+// 2. Логика обработки ответа от API перенесена полностью сюда,
+//    чтобы избежать ошибок и корректно отображать все данные.
+// ==============================================================================
+
+import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import demoTasks from '../src/demoTasks.json';
@@ -109,14 +119,16 @@ export default function CreatoriaWizard() {
     setStep(4);
   };
 
+  // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
   const renderResults = () => {
-    const paretoData = apiResponse?.pareto || apiResponse?.numerical_results?.result?.front;
-    if (!Array.isArray(paretoData) || paretoData.length === 0) {
+    // Извлекаем данные из сохраненного ответа
+    const paretoDataForProcessing = taskKey ? apiResponse?.pareto : apiResponse?.numerical_results?.result?.front;
+    if (!Array.isArray(paretoDataForProcessing) || paretoDataForProcessing.length === 0) {
         return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
     }
     
-    // Адаптируем данные, если они пришли от "живого" бэкенда
-    const processedData = paretoData[0]?.mass !== undefined ? paretoData : paretoData.map(point => ({
+    // Адаптируем данные, если они пришли от "живого" бэкенда или из демо
+    const processedData = paretoDataForProcessing[0]?.mass !== undefined ? paretoDataForProcessing : paretoDataForProcessing.map(point => ({
         "mass": point[0],
         "stiffness": point[1],
         "cost": point.length > 2 ? point[2] : Math.random() * 10 + 90,
@@ -180,6 +192,7 @@ export default function CreatoriaWizard() {
     );
   };
   
+  // --- Основной JSX с восстановленной логикой Шагов 3 и 4 ---
   return (
     <div className="min-h-screen bg-[#0e1117] text-white p-6 mx-auto">
       <header className="flex flex-col items-center mb-8 mt-4">
@@ -200,7 +213,7 @@ export default function CreatoriaWizard() {
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
               <div className="flex items-center justify-center mb-4"><h2 className="text-xl">Step 1: Describe your problem or select demo</h2><span className="ml-2">🖉</span></div>
               <div className="space-y-4">
-                <select className="w-full bg-gray-800 p-2 rounded" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
+                <select className="w-full bg-gray-800 p-2 rounded" value={taskKey} onChange={e => { setTaskKey(e.target.value); setApiResponse(null); }}>
                   <option value="">-- Select Demo or Custom --</option>
                   {Object.entries(demoTasks).map(([key, val]) => (<option key={key} value={key}>{val.description.substring(0, 50) + '...'}</option>))}
                 </select>
@@ -250,7 +263,7 @@ export default function CreatoriaWizard() {
               {apiResponse?.human_readable_report && (
                   <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
                       <h3 className="text-lg font-semibold mb-2">AI Data Summary:</h3>
-                      <p className="text-gray-200">{apiResponse.human_readable_report.match(/#\s*Резюме\s*([\s\S]*?)\n\n##/)?.[1]?.trim() || "Краткое саммари недоступно."}</p>
+                      <p className="text-gray-200">{apiResponse.human_readable_report.match(/#\s*Резюме\s*([\s\S]*?)\n\n##/)?.[1]?.trim() || apiResponse.explanations?.summary || "Краткое саммари недоступно."}</p>
                   </div>
               )}
               <div className="flex justify-end mt-6">
@@ -268,6 +281,15 @@ export default function CreatoriaWizard() {
               {apiResponse?.human_readable_report && (
                   <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left"
                        dangerouslySetInnerHTML={{ __html: marked.parse(apiResponse.human_readable_report) }}/>
+              )}
+               {apiResponse?.full_analysis && (
+                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left">
+                     <h3 className="text-lg font-semibold mb-2">Full AI Data Analysis:</h3>
+                      {apiResponse.full_analysis.summary && <p className="mb-2 text-gray-200"><b>Summary:</b> {apiResponse.full_analysis.summary}</p>}
+                      {apiResponse.full_analysis.trends && <p className="mb-2 text-gray-200"><b>Trends:</b> {apiResponse.full_analysis.trends}</p>}
+                      {apiResponse.full_analysis.anomalies && <p className="mb-2 text-gray-200"><b>Anomalies:</b> {apiResponse.full_analysis.anomalies}</p>}
+                      {apiResponse.full_analysis.recommendations && <p className="mb-2 text-gray-200"><b>Recommendations:</b> {apiResponse.full_analysis.recommendations}</p>}
+                  </div>
               )}
             </div>
         )}
