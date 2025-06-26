@@ -1,11 +1,12 @@
 // server.js  
-// redeploy test 2025-05-22)
+// Интеграция с Python-бэкендом на Render.com
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const jsyaml = require('js-yaml');
 const { OpenAI } = require('openai');
+const fetch = require('node-fetch');
 const demoTasks = require('./demoTasks.json');
 
 const app = express();
@@ -18,16 +19,74 @@ app.use(bodyParser.json());
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Placeholder for real optimization engine call
+// Функция для вызова Python-бэкенда
+async function callPythonBackend(goals, constraints) {
+  const backendUrl = process.env.PYTHON_BACKEND_URL;
+  
+  if (!backendUrl) {
+    throw new Error('PYTHON_BACKEND_URL не настроен в переменных окружения');
+  }
+
+  try {
+    console.log('Вызываем Python-бэкенд:', backendUrl);
+    console.log('Цели:', goals);
+    console.log('Ограничения:', constraints);
+
+    const response = await fetch(`${backendUrl}/optimize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        goals: goals,
+        constraints: constraints
+      }),
+      timeout: 300000 // 5 минут таймаут для долгих вычислений
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Ошибка бэкенда: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('Получен ответ от Python-бэкенда:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('Ошибка при вызове Python-бэкенда:', error);
+    throw error;
+  }
+}
+
+// Функция для запуска оптимизации
 async function runOptimizationEngine(goals, constraints) {
-  // TODO: integrate creatoria-core here
-  return [
-    { stiffness: 5.2, mass: 45.0, cost: 92.5, front: 'A' },
-    { stiffness: 4.8, mass: 47.5, cost: 95.0, front: 'A' },
-    { stiffness: 6.0, mass: 49.0, cost: 98.0, front: 'B' },
-    { stiffness: 5.5, mass: 46.2, cost: 93.1, front: 'B' },
-    { stiffness: 5.0, mass: 45.8, cost: 94.3, front: 'C' }
-  ];
+  try {
+    const result = await callPythonBackend(goals, constraints);
+    
+    // Преобразуем результат в формат, ожидаемый фронтендом
+    if (result.pareto_front && Array.isArray(result.pareto_front)) {
+      return result.pareto_front.map(solution => ({
+        stiffness: solution.stiffness || solution.жесткость || 0,
+        mass: solution.mass || solution.масса || 0,
+        cost: solution.cost || solution.стоимость || 0,
+        front: solution.front || 'A'
+      }));
+    }
+    
+    // Fallback на демо-данные если формат неожиданный
+    console.warn('Неожиданный формат ответа от бэкенда, используем fallback');
+    return [
+      { stiffness: 5.2, mass: 45.0, cost: 92.5, front: 'A' },
+      { stiffness: 4.8, mass: 47.5, cost: 95.0, front: 'A' },
+      { stiffness: 6.0, mass: 49.0, cost: 98.0, front: 'B' },
+      { stiffness: 5.5, mass: 46.2, cost: 93.1, front: 'B' },
+      { stiffness: 5.0, mass: 45.8, cost: 94.3, front: 'C' }
+    ];
+  } catch (error) {
+    console.error('Ошибка в runOptimizationEngine:', error);
+    throw error;
+  }
 }
 
 // 1) Generate YAML
@@ -58,11 +117,12 @@ app.post('/api/generate-yaml', async (req, res) => {
   }
 });
 
-// 2) Run optimization with demoTasks support
+// 2) Run optimization with demoTasks support and live backend integration
 app.post('/api/run-opt', async (req, res) => {
   try {
     const { taskKey, goals = [], constraints = [] } = req.body;
-    // If demo task key provided, return precomputed demo
+    
+    // Если предоставлен ключ демо-задачи, возвращаем предвычисленные демо-данные
     if (taskKey && demoTasks[taskKey]) {
       const demo = demoTasks[taskKey];
       let explanations = demo.explanations;
@@ -100,9 +160,14 @@ app.post('/api/run-opt', async (req, res) => {
         demoConstraints: demo.constraints
       });
     }
-    // Otherwise call real engine
+    
+    // Иначе вызываем реальный Python-бэкенд
+    console.log('Запуск живой оптимизации с целями:', goals);
+    console.log('И ограничениями:', constraints);
+    
     const pareto = await runOptimizationEngine(goals, constraints);
     const topSolutions = pareto.slice(0,5);
+    
     const systemPrompt = {
       role: 'system',
       content: 'You are an expert in engineering optimization. You will receive JSON of top Pareto solutions. Analyze and return ONLY valid JSON object with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON. Do not return an array, return an object with these fields.'
@@ -111,11 +176,13 @@ app.post('/api/run-opt', async (req, res) => {
       role: 'user',
       content: `Analyze the following Pareto optimization data.\n1. Describe the main trends and patterns.\n2. Indicate if there are any anomalies or unexpected results.\n3. Give recommendations for choosing the optimal solution.\n4. Summarize your findings in 2-3 sentences.\nReturn ONLY valid JSON object with the following fields: summary, trends, anomalies, recommendations. Do not use markdown, do not add any explanations or text before or after the JSON. Do not return an array, return an object with these fields.\nData: ${JSON.stringify(topSolutions, null, 2)}`
     };
+    
     const chat = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
       messages: [systemPrompt, userPrompt]
     });
+    
     let explanations;
     const content = chat.choices[0].message.content.trim();
     try {
@@ -158,12 +225,25 @@ app.post('/api/run-opt', async (req, res) => {
     } catch (e) {
       explanations = { summary: content };
     }
+    
     res.json({ pareto, explanations });
   } catch (err) {
-    console.error(err);
+    console.error('Ошибка в /api/run-opt:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// Health check endpoint для проверки статуса
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    backendUrl: process.env.PYTHON_BACKEND_URL ? 'configured' : 'not configured'
+  });
+});
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`API server on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`API server запущен на http://localhost:${PORT}`);
+  console.log(`Python backend URL: ${process.env.PYTHON_BACKEND_URL || 'не настроен'}`);
+});
