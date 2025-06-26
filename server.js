@@ -1,12 +1,11 @@
 ﻿// ==============================================================================
-// server.js - Исправленная версия с правильной обработкой фронта Парето
+// server.js - Полная, исправленная и окончательная версия для MVP
 //
-// Изменения:
-// 1. Логика в /api/run-opt теперь правильно обрабатывает весь массив
-//    точек фронта Парето, полученный от Python API.
-// 2. Данные для Plotly теперь формируются на основе всего фронта, что
-//    позволит отрисовать полноценный 3D-график.
-// 3. Формат ответа адаптирован для корректного отображения в вашем UI.
+// Что делает этот код:
+// 1. Восстановлена полная рабочая логика для эндпоинта /api/generate-yaml.
+// 2. Содержит исправленную логику для /api/run-opt, которая правильно
+//    вызывает Python-бэкенд и обрабатывает полный фронт Парето.
+// 3. Это единственный файл, который вам нужно обновить.
 // ==============================================================================
 
 require('dotenv').config();
@@ -16,10 +15,12 @@ const bodyParser = require('body-parser');
 const jsyaml = require('js-yaml');
 const { OpenAI } = require('openai');
 const fetch = require('node-fetch');
-const demoTasks = require('./src/demoTasks.json');
+// Убедитесь, что путь к demoTasks.json правильный относительно корня проекта
+const demoTasks = require('./src/demoTasks.json'); 
 
 const app = express();
 
+// Настройка CORS
 app.use(cors({ 
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://creatoria.xyz', 'https://creatoria-demo.vercel.app', 'https://*.vercel.app'] 
@@ -30,6 +31,11 @@ app.use(bodyParser.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL;
 
+/**
+ * Функция для вызова Python бэкенда.
+ * @param {string} fullTaskDescription - Описание задачи от пользователя.
+ * @returns {Promise<object>} - Ответ от Python API.
+ */
 async function runLiveOptimization(fullTaskDescription) {
   if (!PYTHON_BACKEND_URL) {
     throw new Error("URL Python бэкенда не задан в переменных окружения (PYTHON_BACKEND_URL)");
@@ -53,42 +59,62 @@ async function runLiveOptimization(fullTaskDescription) {
   return response.json();
 }
 
-// Эндпоинт /api/generate-yaml (без изменений)
+// --- Эндпоинт /api/generate-yaml (ВОССТАНОВЛЕННАЯ ЛОГИКА) ---
 app.post('/api/generate-yaml', async (req, res) => {
-  // ... ваш код без изменений ...
+  try {
+    const { description } = req.body;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: 'You are an expert at translating problem statements into structured data. Input: description of an engineering design task. Output: raw YAML with exactly three goals, any number of constraints.' },
+        { role: 'user', content: description }
+      ]
+    });
+    const raw = completion.choices[0].message.content;
+    const clean = raw.replace(/```yaml\s*/g, '').replace(/```/g, '').trim();
+    let data;
+    try {
+      data = jsyaml.load(clean);
+    } catch (e) {
+      return res.status(400).json({ error: 'YAML parsing error', details: e.message });
+    }
+    if (Array.isArray(data.goals) && data.goals.length > 3) data.goals = data.goals.slice(0,3);
+    res.json({ yaml: clean, data });
+  } catch (err) {
+    console.error("Ошибка в /api/generate-yaml:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Эндпоинт /api/run-opt (ИСПРАВЛЕНА ЛОГИКА ОБРАБОТКИ РЕЗУЛЬТАТА)
+
+// --- Эндпоинт /api/run-opt (ИСПРАВЛЕННАЯ ЛОГИКА) ---
 app.post('/api/run-opt', async (req, res) => {
   try {
     const { taskKey, description } = req.body;
 
+    // Логика для демо-задач
     if (taskKey && demoTasks[taskKey]) {
-      // ... ваш код для демо-задач остается без изменений ...
       const demo = demoTasks[taskKey];
+      // ... (ваш код для обработки демо-ответа)
       return res.json({ pareto: demo.pareto, explanations: demo.explanations, demoGoals: demo.goals, demoConstraints: demo.constraints });
     }
     
+    // Логика для "живой" оптимизации
     console.log("Запуск 'живой' оптимизации для задачи:", description);
     const resultFromPython = await runLiveOptimization(description);
-
-    // --- НОВАЯ, ИСПРАВЛЕННАЯ ЛОГИКА АДАПТАЦИИ ---
     
-    // Проверяем, есть ли реальные вычислительные результаты
-    const numericalResults = resultFromPython.numerical_results;
+    // Адаптация ответа для фронтенда
     let paretoData = [];
-
-    // Проверяем, что есть фронт Парето от NSGA-II
-    if (numericalResults && resultFromPython.numerical_results?.result?.solver === 'nsga-ii' && resultFromPython.numerical_results?.result?.front) {
-        const fullFront = resultFromPython.numerical_results.result.front;
-        // Преобразуем ВЕСЬ фронт в формат, который понимает ваш Plotly компонент
+    const numericalResults = resultFromPython.numerical_results;
+    
+    if (numericalResults && !numericalResults.error && numericalResults.result?.solver === 'nsga-ii' && numericalResults.result?.front) {
+        const fullFront = numericalResults.result.front;
         paretoData = fullFront.map(point => ({
-            "Mass (Цель 1)": point[0],
-            "Strength (Цель 2)": point[1],
-            // Можно добавить третью ось, если она есть
+            "Objective 1 (e.g., Mass)": point[0],
+            "Objective 2 (e.g., Strength)": point[1],
         }));
     } else if (numericalResults && !numericalResults.error) {
-        // Запасной вариант для других типов ответов (QUBO, GA и т.д.)
         const { best_for_objective_1, best_for_objective_2, balanced_solution } = numericalResults;
         paretoData = [
             { "Objective 1": best_for_objective_1[0], "Objective 2": best_for_objective_1[1], "Solution Type": "Best for Obj 1" },
@@ -96,11 +122,10 @@ app.post('/api/run-opt', async (req, res) => {
             { "Objective 1": balanced_solution[0], "Objective 2": balanced_solution[1], "Solution Type": "Balanced" }
         ];
     }
-    
-    // Помещаем весь Markdown отчет в поле summary, как ожидает ваш фронтенд
+
     const explanations = {
       summary: resultFromPython.human_readable_report || "Отчет не был сгенерирован.",
-      trends: "", 
+      trends: "",
       anomalies: "",
       recommendations: ""
     };
