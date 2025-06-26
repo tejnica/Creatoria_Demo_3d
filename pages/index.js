@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import demoTasks from '../src/demoTasks.json';
 import Stepper from '../src/components/Stepper';
+import { marked } from 'marked'; // Убедитесь, что эта библиотека установлена: npm install marked
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
@@ -20,7 +21,6 @@ export default function CreatoriaWizard() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  // ... (функции extractDescriptions, handleGenerateYaml, handleSelectDemo без изменений) ...
   function extractDescriptions(item) {
     if (typeof item === 'string') return item;
     if (Array.isArray(item)) return item.map(extractDescriptions).join('; ');
@@ -58,6 +58,7 @@ export default function CreatoriaWizard() {
     setYamlText(`goals:\n  - ${demo.goals.join('\n  - ')}\n\nconstraints:\n  - ${demo.constraints.join('\n  - ')}`);
     setGoalVariables(demo.goals);
     setConstraints(demo.constraints);
+    setApiResponse(demo); // Загружаем демо-данные для отображения
     setStep(2);
   };
 
@@ -66,8 +67,17 @@ export default function CreatoriaWizard() {
     setProgress(0);
     const interval = setInterval(() => setProgress(p => Math.min(100, p + 20)), 300);
     
+    // Если выбран демо-режим, просто переходим на следующий шаг
+    if (taskKey) {
+        clearInterval(interval);
+        setRunning(false);
+        setProgress(100);
+        setStep(3);
+        return;
+    }
+
     // В "живом" режиме мы передаем `description`
-    const payload = taskKey ? { taskKey } : { description };
+    const payload = { description };
 
     fetch('/api/run-opt', {
       method: 'POST',
@@ -99,65 +109,63 @@ export default function CreatoriaWizard() {
     setStep(4);
   };
 
-  // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
   const renderResults = () => {
-    // Извлекаем данные из сохраненного ответа
-    const numericalData = apiResponse?.numerical_results;
-    if (!numericalData || numericalData.error) {
-      return <p className="text-center text-yellow-400">Результаты вычислений недоступны.</p>;
-    }
-
-    const { best_for_objective_1, best_for_objective_2, balanced_solution } = numericalData;
-    if (!best_for_objective_1 || !best_for_objective_2 || !balanced_solution) {
-      return <p className="text-center">Получен неполный набор данных.</p>;
+    const paretoData = apiResponse?.pareto || apiResponse?.numerical_results?.result?.front;
+    if (!Array.isArray(paretoData) || paretoData.length === 0) {
+        return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
     }
     
-    // Готовим данные для 3D-графика и таблицы
-    const plotData = [
-      { mass: best_for_objective_1[0], stiffness: best_for_objective_1[1], cost: 110, front: "Min Mass" },
-      { mass: best_for_objective_2[0], stiffness: best_for_objective_2[1], cost: 120, front: "Max Stiffness" },
-      { mass: balanced_solution[0], stiffness: balanced_solution[1], cost: 100, front: "Balanced" }
-    ];
-    
-    const top5 = plotData; // Для MVP покажем все 3 точки
-    const plotArea = (
-      <Plot
-        data={[{ 
-            x: plotData.map(p => p.stiffness), 
-            y: plotData.map(p => p.mass), 
-            z: plotData.map(p => p.cost), 
-            mode: 'markers', 
-            type: 'scatter3d', 
-            marker: { size: 8, color: ['#FF6347', '#4682B4', '#32CD32'], symbol: 'diamond' },
-            text: plotData.map(p => p.front),
-            hoverinfo: 'text+x+y+z'
-        }]}
-        layout={{
-          title: 'Ключевые решения на фронте Парето',
-          scene: {
-            xaxis: { title: 'Stiffness (Прочность)', color: '#fff', gridcolor: '#444' },
-            yaxis: { title: 'Mass (Масса)', color: '#fff', gridcolor: '#444' },
-            zaxis: { title: 'Cost (Стоимость, условно)', color: '#fff', gridcolor: '#444' },
-          },
-          paper_bgcolor: '#0e1117',
-          font: { color: '#fff' },
-          height: 600,
-          autosize: true,
-          margin: { l: 10, r: 10, t: 40, b: 10 },
-        }}
-        style={{ width: '100%', height: '60vh' }}
-        config={{ responsive: true }}
-      />
-    );
+    // Адаптируем данные, если они пришли от "живого" бэкенда
+    const processedData = paretoData[0]?.mass !== undefined ? paretoData : paretoData.map(point => ({
+        "mass": point[0],
+        "stiffness": point[1],
+        "cost": point.length > 2 ? point[2] : Math.random() * 10 + 90,
+        "front": "Live"
+    }));
 
+    const top5 = processedData.slice(0, 5);
+    const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
+    let plotArea = null;
+
+    if (numericKeys.length >= 3) {
+      const [k1, k2, k3] = ["stiffness", "mass", "cost"];
+      plotArea = (
+        <Plot
+            data={[{ 
+                x: processedData.map(p => p[k1]), 
+                y: processedData.map(p => p[k2]), 
+                z: processedData.map(p => p[k3]), 
+                mode: 'markers', 
+                type: 'scatter3d', 
+                marker: { size: 6, color: '#FFAA00' } 
+            }]}
+            layout={{
+              title: 'Pareto Front Visualization',
+              scene: {
+                xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
+                yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
+                zaxis: { title: k3, color: '#fff', gridcolor: '#444' },
+              },
+              paper_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              height: 600,
+              autosize: true,
+              margin: { l: 10, r: 10, t: 40, b: 10 },
+            }}
+            style={{ width: '100%', height: '60vh' }}
+            config={{ responsive: true }}
+        />
+      );
+    }
+    
     return (
       <>
         {plotArea}
         <div className="mt-6 overflow-x-auto">
-          <h3 className="text-lg mb-2">Top Pareto Solutions</h3>
+          <h3 className="text-lg mb-2">Top 5 Pareto Solutions</h3>
           <table className="min-w-full bg-gray-800 text-white rounded">
             <thead>
-              <tr>{Object.keys(top5[0]).map(col => <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">{col}</th>)}</tr>
+              <tr>{Object.keys(top5[0] || {}).map(col => <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">{col}</th>)}</tr>
             </thead>
             <tbody>
               {top5.map((row, i) => (
@@ -172,7 +180,6 @@ export default function CreatoriaWizard() {
     );
   };
   
-  // --- Основной JSX с восстановленной логикой Шагов 3 и 4 ---
   return (
     <div className="min-h-screen bg-[#0e1117] text-white p-6 mx-auto">
       <header className="flex flex-col items-center mb-8 mt-4">
@@ -185,19 +192,59 @@ export default function CreatoriaWizard() {
         </div>
       </header>
       
-      <Stepper step={step} steps={['Step 1', 'Step 2', 'Step 3', 'Step 4']} />
+      <Stepper step={step} setStep={setStep} steps={['Step 1', 'Step 2', 'Step 3', 'Step 4']} />
 
       <div className="pl-4">
-        {step === 1 && ( /* ... ваш код для Шага 1 ... */ <div/> )}
-        {yamlText && step >= 2 && ( /* ... ваш код для YAML ... */ <div/> )}
-        {step === 2 && ( /* ... ваш код для Шага 2 ... */ <div/> )}
+        {step === 1 && (
+          <div className="flex justify-center">
+            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
+              <div className="flex items-center justify-center mb-4"><h2 className="text-xl">Step 1: Describe your problem or select demo</h2><span className="ml-2">🖉</span></div>
+              <div className="space-y-4">
+                <select className="w-full bg-gray-800 p-2 rounded" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
+                  <option value="">-- Select Demo or Custom --</option>
+                  {Object.entries(demoTasks).map(([key, val]) => (<option key={key} value={key}>{val.description.substring(0, 50) + '...'}</option>))}
+                </select>
+                {!taskKey ? (
+                  <>
+                    <textarea rows={4} className="w-full bg-gray-800 p-3 rounded" placeholder="Enter problem description" value={description} onChange={e => setDescription(e.target.value)} />
+                    <button onClick={handleGenerateYaml} disabled={running} className="bg-orange-500 px-4 py-2 rounded hover:bg-orange-600 disabled:bg-gray-500">{running ? 'Generating...' : 'Generate YAML'}</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="w-full bg-gray-900 p-3 rounded">{demoTasks[taskKey].description}</p>
+                    <button onClick={handleSelectDemo} className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">Next →</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {yamlText && step >= 2 && (
+            <div className="flex justify-center my-8">
+                <pre className="bg-gray-900 p-6 rounded-xl shadow-lg max-w-2xl w-full text-white text-md whitespace-pre-wrap">{yamlText}</pre>
+            </div>
+        )}
+        
+        {step === 2 && (
+            <div className="flex justify-center">
+                <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
+                    <div className="flex items-center justify-between mb-4">
+                        <button onClick={() => setStep(1)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
+                        <h2 className="text-xl">Step 2: Configure Goals & Constraints</h2><span className="ml-2">⚙️</span>
+                    </div>
+                    <div className="mb-4"><h3 className="font-medium mb-2">Goals</h3>{goalVariables.map((g, i) => (<div key={i} className="bg-gray-800 p-3 rounded mb-2">{g}</div>))}</div>
+                    <div className="mb-4"><h3 className="font-medium mb-2">Constraints</h3>{constraints.map((c, i) => (<div key={i} className="bg-gray-800 p-3 rounded mb-2">{c}</div>))}</div>
+                    <button onClick={runOptimization} disabled={running} className={`w-full py-2 rounded ${running ? 'bg-gray-500' : 'bg-green-500 hover:bg-green-600'}`}>{running ? `Running... ${progress}%` : 'Run Optimization'}</button>
+                </div>
+            </div>
+        )}
 
         {step === 3 && (
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full mx-auto">
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => setStep(2)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
-                <h2 className="text-xl">Step 3: Results</h2>
-                <span className="ml-2">📊</span>
+                <h2 className="text-xl">Step 3: Results</h2><span className="ml-2">📊</span>
               </div>
               {renderResults()}
               {apiResponse?.human_readable_report && (
@@ -216,14 +263,11 @@ export default function CreatoriaWizard() {
             <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full mx-auto">
               <div className="flex items-center justify-between mb-4">
                   <button onClick={() => setStep(3)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
-                  <h2 className="text-xl">Full AI Data Analysis</h2>
-                  <span className="ml-2">🧠</span>
+                  <h2 className="text-xl">Full AI Data Analysis</h2><span className="ml-2">🧠</span>
               </div>
               {apiResponse?.human_readable_report && (
-                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left">
-                      <h3 className="text-lg font-semibold mb-2">Full AI Data Analysis:</h3>
-                      <pre className="text-gray-200 whitespace-pre-wrap font-sans">{apiResponse.human_readable_report}</pre>
-                  </div>
+                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left"
+                       dangerouslySetInnerHTML={{ __html: marked.parse(apiResponse.human_readable_report) }}/>
               )}
             </div>
         )}

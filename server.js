@@ -30,25 +30,47 @@ app.use(bodyParser.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL;
 
-// Эндпоинт /api/generate-yaml (без изменений)
+// Эндпоинт /api/generate-yaml (восстановлен и исправлен)
 app.post('/api/generate-yaml', async (req, res) => {
   try {
     const { description } = req.body;
-    const systemPrompt = `You are a precision machine that converts user requirements into a raw YAML format...`; // Сокращено для краткости
-    const userPrompt = `Based on the following user description, generate a YAML structure...\n\nUser Description: "${description}"`;
+    const systemPrompt = `You are a precision machine that converts user requirements into a raw YAML format. You MUST ONLY output the raw YAML code. DO NOT add any explanations, introductory text, or markdown formatting like \`\`\`yaml. Your entire response must be ONLY the YAML text.`;
+    const userPrompt = `Based on the following user description, generate a YAML structure with two keys: "goals" and "constraints".
+
+User Description: "${description}"
+
+Example output format:
+goals:
+  - Optimize the bracket to be lightweight
+  - Ensure the bracket maintains high strength
+constraints:
+  - Material must have a minimum tensile strength of 200 MPa
+  - Maximum weight should not exceed 500 grams`;
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.1,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
     });
-    const clean = completion.choices[0].message.content.replace(/```yaml\s*|```/g, '').trim();
-    const data = jsyaml.load(clean);
+    
+    const raw = completion.choices[0].message.content;
+    const clean = raw.replace(/```yaml\s*|```/g, '').trim();
+    let data;
+    try {
+      data = jsyaml.load(clean);
+    } catch (e) {
+      console.error("YAML PARSING ERROR. Raw content from LLM:", clean);
+      return res.status(400).json({ error: 'YAML parsing error from LLM response', details: e.message });
+    }
+
     res.json({ yaml: clean, data });
+
   } catch (err) {
     console.error("Ошибка в /api/generate-yaml:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // Эндпоинт /api/run-opt (теперь работает как прокси)
 app.post('/api/run-opt', async (req, res) => {
