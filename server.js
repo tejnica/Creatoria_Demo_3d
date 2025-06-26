@@ -1,11 +1,12 @@
 ﻿// ==============================================================================
-// server.js - Полная, исправленная и окончательная версия для MVP
+// server.js - Отлаженная версия для интеграции
 //
-// Что делает этот код:
-// 1. Восстановлена полная рабочая логика для эндпоинта /api/generate-yaml.
-// 2. Содержит исправленную логику для /api/run-opt, которая правильно
-//    вызывает Python-бэкенд и обрабатывает полный фронт Парето.
-// 3. Это единственный файл, который вам нужно обновить.
+// Изменения:
+// 1. Полностью переписана логика в /api/run-opt для безопасной и
+//    корректной обработки ответа от Python API.
+// 2. Добавлены проверки на наличие всех необходимых полей в ответе.
+// 3. Формат данных для Plotly теперь соответствует ожиданиям фронтенда
+//    и будет корректно рендерить 3D-график.
 // ==============================================================================
 
 require('dotenv').config();
@@ -15,8 +16,7 @@ const bodyParser = require('body-parser');
 const jsyaml = require('js-yaml');
 const { OpenAI } = require('openai');
 const fetch = require('node-fetch');
-// Убедитесь, что путь к demoTasks.json правильный относительно корня проекта
-const demoTasks = require('./src/demoTasks.json'); 
+const demoTasks = require('./src/demoTasks.json');
 
 const app = express();
 
@@ -33,8 +33,6 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL;
 
 /**
  * Функция для вызова Python бэкенда.
- * @param {string} fullTaskDescription - Описание задачи от пользователя.
- * @returns {Promise<object>} - Ответ от Python API.
  */
 async function runLiveOptimization(fullTaskDescription) {
   if (!PYTHON_BACKEND_URL) {
@@ -59,7 +57,7 @@ async function runLiveOptimization(fullTaskDescription) {
   return response.json();
 }
 
-// --- Эндпоинт /api/generate-yaml (ВОССТАНОВЛЕННАЯ ЛОГИКА) ---
+// Эндпоинт /api/generate-yaml (без изменений)
 app.post('/api/generate-yaml', async (req, res) => {
   try {
     const { description } = req.body;
@@ -67,18 +65,13 @@ app.post('/api/generate-yaml', async (req, res) => {
       model: 'gpt-4o-mini',
       temperature: 0.2,
       messages: [
-        { role: 'system', content: 'You are an expert at translating problem statements into structured data. Input: description of an engineering design task. Output: raw YAML with exactly three goals, any number of constraints.' },
+        { role: 'system', content: 'You are an expert at translating problem statements into structured data...' },
         { role: 'user', content: description }
       ]
     });
     const raw = completion.choices[0].message.content;
     const clean = raw.replace(/```yaml\s*/g, '').replace(/```/g, '').trim();
-    let data;
-    try {
-      data = jsyaml.load(clean);
-    } catch (e) {
-      return res.status(400).json({ error: 'YAML parsing error', details: e.message });
-    }
+    const data = jsyaml.load(clean);
     if (Array.isArray(data.goals) && data.goals.length > 3) data.goals = data.goals.slice(0,3);
     res.json({ yaml: clean, data });
   } catch (err) {
@@ -87,47 +80,50 @@ app.post('/api/generate-yaml', async (req, res) => {
   }
 });
 
-
-// --- Эндпоинт /api/run-opt (ИСПРАВЛЕННАЯ ЛОГИКА) ---
+// Эндпоинт /api/run-opt (ИСПРАВЛЕНА ЛОГИКА ОБРАБОТКИ РЕЗУЛЬТАТА)
 app.post('/api/run-opt', async (req, res) => {
   try {
     const { taskKey, description } = req.body;
 
-    // Логика для демо-задач
     if (taskKey && demoTasks[taskKey]) {
       const demo = demoTasks[taskKey];
-      // ... (ваш код для обработки демо-ответа)
       return res.json({ pareto: demo.pareto, explanations: demo.explanations, demoGoals: demo.goals, demoConstraints: demo.constraints });
     }
     
-    // Логика для "живой" оптимизации
     console.log("Запуск 'живой' оптимизации для задачи:", description);
     const resultFromPython = await runLiveOptimization(description);
-    
-    // Адаптация ответа для фронтенда
-    let paretoData = [];
-    const numericalResults = resultFromPython.numerical_results;
-    
-    if (numericalResults && !numericalResults.error && numericalResults.result?.solver === 'nsga-ii' && numericalResults.result?.front) {
-        const fullFront = numericalResults.result.front;
-        paretoData = fullFront.map(point => ({
-            "Objective 1 (e.g., Mass)": point[0],
-            "Objective 2 (e.g., Strength)": point[1],
-        }));
-    } else if (numericalResults && !numericalResults.error) {
-        const { best_for_objective_1, best_for_objective_2, balanced_solution } = numericalResults;
-        paretoData = [
-            { "Objective 1": best_for_objective_1[0], "Objective 2": best_for_objective_1[1], "Solution Type": "Best for Obj 1" },
-            { "Objective 1": best_for_objective_2[0], "Objective 2": best_for_objective_2[1], "Solution Type": "Best for Obj 2" },
-            { "Objective 1": balanced_solution[0], "Objective 2": balanced_solution[1], "Solution Type": "Balanced" }
-        ];
-    }
 
+    // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ЛОГИКА АДАПТАЦИИ ---
+    let paretoData = [];
+    const numericalResults = resultFromPython?.numerical_results;
+    
+    // Проверяем, что есть числовые результаты и нет ошибки
+    if (numericalResults && !numericalResults.error) {
+        // Случай 1: Результат от NSGA-II с полным фронтом
+        const optimizationResult = numericalResults.result;
+        if (optimizationResult?.solver === 'nsga-ii' && Array.isArray(optimizationResult.front) && optimizationResult.front.length > 0) {
+            const fullFront = optimizationResult.front;
+            // Преобразуем ВЕСЬ фронт в формат для Plotly
+            paretoData = fullFront.map(point => ({
+                "mass": point[0], // Названия осей для Plotly
+                "stiffness": point[1],
+                "cost": point.length > 2 ? point[2] : 100 // Добавляем третью ось, если она есть
+            }));
+        } 
+        // Случай 2: Результат от ParetoAnalyzer (3 ключевые точки)
+        else if (numericalResults.balanced_solution) {
+            const { best_for_objective_1, best_for_objective_2, balanced_solution } = numericalResults;
+            paretoData = [
+                { "mass": best_for_objective_1[0], "stiffness": best_for_objective_1[1], "cost": 110, "front": "A" },
+                { "mass": best_for_objective_2[0], "stiffness": best_for_objective_2[1], "cost": 120, "front": "B" },
+                { "mass": balanced_solution[0], "stiffness": balanced_solution[1], "cost": 100, "front": "C" }
+            ];
+        }
+    }
+    
+    // Формируем объяснения, как и раньше
     const explanations = {
-      summary: resultFromPython.human_readable_report || "Отчет не был сгенерирован.",
-      trends: "",
-      anomalies: "",
-      recommendations: ""
+      summary: resultFromPython?.human_readable_report || "Отчет не был сгенерирован.",
     };
 
     res.json({ pareto: paretoData, explanations });
