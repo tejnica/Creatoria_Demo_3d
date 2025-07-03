@@ -154,8 +154,34 @@ export default function CreatoriaWizard() {
 
     if (processedData.length < 2) {
       plotArea = <p className="text-center text-red-400">Visualization cannot be built: not enough points. Please increase the number of solutions.</p>;
-    } else if (numericKeys.length >= 3) {
-      const [k1, k2, k3] = ["stiffness", "mass", "cost"];
+    } else if (numericKeys.length === 2) {
+      const [k1, k2] = numericKeys;
+      plotArea = (
+        <Plot
+            data={[{
+                x: processedData.map(p => p[k1]),
+                y: processedData.map(p => p[k2]),
+                mode: 'markers+lines',
+                type: 'scatter',
+                marker: { size: 8, color: '#FFAA00' },
+                line: { color: '#FFAA00' }
+            }]}
+            layout={{
+              title: 'Pareto Front Visualization (2D)',
+              xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
+              yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
+              paper_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              height: 500,
+              autosize: true,
+              margin: { l: 10, r: 10, t: 40, b: 10 },
+            }}
+            style={{ width: '100%', height: '50vh' }}
+            config={{ responsive: true }}
+        />
+      );
+    } else if (numericKeys.length === 3) {
+      const [k1, k2, k3] = numericKeys;
       plotArea = (
         <Plot
             data={[{ 
@@ -183,32 +209,8 @@ export default function CreatoriaWizard() {
             config={{ responsive: true }}
         />
       );
-    } else if (numericKeys.length === 2) {
-      const [k1, k2] = ["mass", "stiffness"];
-      plotArea = (
-        <Plot
-            data={[{
-                x: processedData.map(p => p[k1]),
-                y: processedData.map(p => p[k2]),
-                mode: 'markers+lines',
-                type: 'scatter',
-                marker: { size: 8, color: '#FFAA00' },
-                line: { color: '#FFAA00' }
-            }]}
-            layout={{
-              title: 'Pareto Front Visualization (2D)',
-              xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
-              yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
-              paper_bgcolor: '#0e1117',
-              font: { color: '#fff' },
-              height: 500,
-              autosize: true,
-              margin: { l: 10, r: 10, t: 40, b: 10 },
-            }}
-            style={{ width: '100%', height: '50vh' }}
-            config={{ responsive: true }}
-        />
-      );
+    } else if (numericKeys.length > 3) {
+      plotArea = <p className="text-center text-yellow-400">Visualization for more than 3 objectives is not supported yet. Please see the table below for details.</p>;
     } else {
       plotArea = <p className="text-center text-red-400">Visualization cannot be built: not enough numeric dimensions.</p>;
     }
