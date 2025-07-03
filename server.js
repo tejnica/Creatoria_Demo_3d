@@ -20,6 +20,8 @@ const demoTasks = require('./src/demoTasks.json');
 
 const app = express();
 
+console.log("PYTHON_BACKEND_URL:", process.env.PYTHON_BACKEND_URL);
+
 app.use(cors({ 
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://creatoria.xyz', 'https://creatoria-demo.vercel.app', 'https://*.vercel.app'] 
