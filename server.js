@@ -149,7 +149,6 @@ app.post('/api/run-opt', async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
 // Экспорт для Vercel
 module.exports = app;
 
@@ -162,6 +161,3 @@ app.get('/api/health', (req, res) => {
     openaiKey: process.env.OPENAI_API_KEY ? 'configured' : 'not configured'
   });
 });
-=======
-module.exports = app;
->>>>>>> 1acfb1ec97cc0d15fd8bcfdcf0cdc64d1d946c5a
