@@ -1,4 +1,4 @@
-﻿// ==============================================================================
+// ==============================================================================
 // Файл: pages/index.js
 // Версия: Финальная, отлаженная, с восстановленным UI
 //
@@ -122,7 +122,7 @@ export default function CreatoriaWizard() {
   // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
   const renderResults = () => {
     // Извлекаем данные из сохраненного ответа
-    const paretoDataForProcessing = taskKey ? apiResponse?.pareto : apiResponse?.numerical_results?.result?.front;
+    const paretoDataForProcessing = apiResponse?.pareto || apiResponse?.numerical_results?.result?.front;
     if (!Array.isArray(paretoDataForProcessing) || paretoDataForProcessing.length === 0) {
         return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
     }
