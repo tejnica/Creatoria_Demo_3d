@@ -128,18 +128,33 @@ export default function CreatoriaWizard() {
     }
     
     // Адаптируем данные, если они пришли от "живого" бэкенда или из демо
-    const processedData = paretoDataForProcessing[0]?.mass !== undefined ? paretoDataForProcessing : paretoDataForProcessing.map(point => ({
-        "mass": point[0],
-        "stiffness": point[1],
-        "cost": point.length > 2 ? point[2] : Math.random() * 10 + 90,
-        "front": "Live"
+    let processedData = paretoDataForProcessing.map((point, i) => ({
+        ...point,
+        cost: point.cost !== undefined ? point.cost : (Math.random() * 10 + 90)
     }));
+
+    // Если точек меньше 5, добавляем промежуточные (линейная интерполяция)
+    while (processedData.length < 5 && processedData.length >= 2) {
+        for (let i = 0; i < processedData.length - 1 && processedData.length < 5; i++) {
+            const a = processedData[i];
+            const b = processedData[i + 1];
+            processedData.splice(i + 1, 0, {
+                mass: (a.mass + b.mass) / 2,
+                stiffness: (a.stiffness + b.stiffness) / 2,
+                cost: (a.cost + b.cost) / 2,
+                type: 'Interpolated'
+            });
+            i++;
+        }
+    }
 
     const top5 = processedData.slice(0, 5);
     const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
     let plotArea = null;
 
-    if (numericKeys.length >= 3) {
+    if (processedData.length < 2) {
+      plotArea = <p className="text-center text-red-400">Visualization cannot be built: not enough points. Please increase the number of solutions.</p>;
+    } else if (numericKeys.length >= 3) {
       const [k1, k2, k3] = ["stiffness", "mass", "cost"];
       plotArea = (
         <Plot
@@ -152,7 +167,7 @@ export default function CreatoriaWizard() {
                 marker: { size: 6, color: '#FFAA00' } 
             }]}
             layout={{
-              title: 'Pareto Front Visualization',
+              title: 'Pareto Front Visualization (3D)',
               scene: {
                 xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
                 yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
@@ -168,6 +183,34 @@ export default function CreatoriaWizard() {
             config={{ responsive: true }}
         />
       );
+    } else if (numericKeys.length === 2) {
+      const [k1, k2] = ["mass", "stiffness"];
+      plotArea = (
+        <Plot
+            data={[{
+                x: processedData.map(p => p[k1]),
+                y: processedData.map(p => p[k2]),
+                mode: 'markers+lines',
+                type: 'scatter',
+                marker: { size: 8, color: '#FFAA00' },
+                line: { color: '#FFAA00' }
+            }]}
+            layout={{
+              title: 'Pareto Front Visualization (2D)',
+              xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
+              yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
+              paper_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              height: 500,
+              autosize: true,
+              margin: { l: 10, r: 10, t: 40, b: 10 },
+            }}
+            style={{ width: '100%', height: '50vh' }}
+            config={{ responsive: true }}
+        />
+      );
+    } else {
+      plotArea = <p className="text-center text-red-400">Visualization cannot be built: not enough numeric dimensions.</p>;
     }
     
     return (
