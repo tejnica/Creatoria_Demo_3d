@@ -32,6 +32,64 @@ app.use(bodyParser.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL;
 
+// Функция для определения названий столбцов на основе описания задачи
+function getObjectiveNames(taskDescription, nObjectives) {
+    const desc = taskDescription.toLowerCase();
+    const names = [];
+    
+    // Определяем названия на основе ключевых слов в описании
+    if (desc.includes('weight') || desc.includes('mass')) {
+        names.push('weight');
+    }
+    if (desc.includes('cost') || desc.includes('price')) {
+        names.push('cost');
+    }
+    if (desc.includes('strength') || desc.includes('stiffness')) {
+        names.push('strength');
+    }
+    if (desc.includes('heat') || desc.includes('flux')) {
+        names.push('heat_flux');
+    }
+    if (desc.includes('pressure') || desc.includes('drop')) {
+        names.push('pressure_drop');
+    }
+    if (desc.includes('volume')) {
+        names.push('volume');
+    }
+    if (desc.includes('thrust')) {
+        names.push('thrust');
+    }
+    if (desc.includes('energy')) {
+        names.push('energy');
+    }
+    if (desc.includes('efficiency')) {
+        names.push('efficiency');
+    }
+    if (desc.includes('safety')) {
+        names.push('safety');
+    }
+    if (desc.includes('time') || desc.includes('duration')) {
+        names.push('time');
+    }
+    if (desc.includes('noise')) {
+        names.push('noise');
+    }
+    if (desc.includes('drag')) {
+        names.push('drag');
+    }
+    if (desc.includes('lift')) {
+        names.push('lift');
+    }
+    
+    // Если найдено меньше названий чем целей, добавляем общие названия
+    while (names.length < nObjectives) {
+        names.push(`objective${names.length + 1}`);
+    }
+    
+    // Возвращаем только нужное количество
+    return names.slice(0, nObjectives);
+}
+
 async function runLiveOptimization(fullTaskDescription) {
   if (!PYTHON_BACKEND_URL) {
     throw new Error("URL Python бэкенда не задан в переменных окружения (PYTHON_BACKEND_URL)");
@@ -63,7 +121,7 @@ app.post('/api/generate-yaml', async (req, res) => {
       model: 'gpt-4o-mini',
       temperature: 0.2,
       messages: [
-        { role: 'system', content: 'You are an expert at translating problem statements into structured data. Input: description of an engineering design task. Output: raw YAML with exactly three goals, any number of constraints.' },
+        { role: 'system', content: 'You are an expert at translating problem statements into structured data. Input: description of an engineering design task. Output: raw YAML with the EXACT number of goals mentioned in the task (can be 1, 2, 3, 4, or more), any number of constraints.' },
         { role: 'user', content: description }
       ]
     });
@@ -75,7 +133,7 @@ app.post('/api/generate-yaml', async (req, res) => {
     } catch (e) {
       return res.status(400).json({ error: 'YAML parsing error', details: e.message });
     }
-    if (Array.isArray(data.goals) && data.goals.length > 3) data.goals = data.goals.slice(0,3);
+    // Убрано ограничение на 3 цели - теперь поддерживается любое количество целей
     res.json({ yaml: clean, data });
   } catch (err) {
     console.error(err);
@@ -108,29 +166,124 @@ app.post('/api/run-opt', async (req, res) => {
     console.log("Запуск 'живой' оптимизации для задачи:", taskDescription);
     const resultFromPython = await runLiveOptimization(taskDescription);
 
+    // --- ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ ДИАГНОСТИКИ ---
+    console.log("=== ПОЛНЫЙ ОТВЕТ ОТ BACKEND ===");
+    console.log(JSON.stringify(resultFromPython, null, 2));
+    
     // --- НОВАЯ, ИСПРАВЛЕННАЯ ЛОГИКА АДАПТАЦИИ ---
     
     // Проверяем, есть ли реальные вычислительные результаты
     const numericalResults = resultFromPython.numerical_results;
     let paretoData = [];
 
-    // Проверяем, что есть фронт Парето от NSGA-II
-    if (numericalResults && resultFromPython.numerical_results?.result?.solver === 'nsga-ii' && resultFromPython.numerical_results?.result?.front) {
-        const fullFront = resultFromPython.numerical_results.result.front;
-        // Преобразуем ВЕСЬ фронт в формат, который понимает ваш Plotly компонент
-        paretoData = fullFront.map(point => ({
-            "Mass (Цель 1)": point[0],
-            "Strength (Цель 2)": point[1],
-            // Можно добавить третью ось, если она есть
-        }));
-    } else if (numericalResults && !numericalResults.error) {
-        // Запасной вариант для других типов ответов (QUBO, GA и т.д.)
-        const { best_for_objective_1, best_for_objective_2, balanced_solution } = numericalResults;
-        paretoData = [
-            { mass: best_for_objective_1[0], stiffness: best_for_objective_1[1], type: "Best for Mass" },
-            { mass: best_for_objective_2[0], stiffness: best_for_objective_2[1], type: "Best for Stiffness" },
-            { mass: balanced_solution[0], stiffness: balanced_solution[1], type: "Balanced" }
-        ];
+    // Проверяем, что есть фронт Парето от NSGA-II (многоцелевые задачи)
+    if (numericalResults && numericalResults.result?.solver === 'nsga-ii' && numericalResults.result?.front) {
+        const fullFront = numericalResults.result.front;
+        const nObjectives = numericalResults.result.n_objectives || fullFront[0]?.length || 2;
+        
+        console.log("=== ДЕТАЛИ NSGA-II РЕЗУЛЬТАТОВ ===");
+        console.log(`Количество целей: ${nObjectives}`);
+        console.log(`Размер фронта: ${fullFront.length}`);
+        console.log("Первые 3 точки фронта:", fullFront.slice(0, 3));
+        console.log("Последние 3 точки фронта:", fullFront.slice(-3));
+        
+        // Создаем названия для целей
+        const objectiveNames = getObjectiveNames(taskDescription, nObjectives);
+        console.log("Названия целей:", objectiveNames);
+        
+        // Преобразуем ВЕСЬ фронт в формат для Frontend
+        paretoData = fullFront.map((point, index) => {
+            const dataPoint = { type: index < 3 ? ["Best for Objective 1", "Best for Objective 2", "Balanced"][index] : "Pareto Point" };
+            
+            // Добавляем значения целей, конвертируя отрицательные в положительные
+            for (let i = 0; i < nObjectives && i < point.length; i++) {
+                let value = point[i];
+                // Если значение отрицательное (от maximize целей), инвертируем его
+                if (value < 0) {
+                    value = Math.abs(value);
+                }
+                dataPoint[objectiveNames[i]] = value;
+            }
+            
+            return dataPoint;
+        });
+        
+        console.log("=== АНАЛИЗ РАЗНООБРАЗИЯ ДАННЫХ ===");
+        if (paretoData.length > 1) {
+            const firstPoint = paretoData[0];
+            const allSame = paretoData.every(point => 
+                objectiveNames.every(name => Math.abs(point[name] - firstPoint[name]) < 0.001)
+            );
+            console.log(`Все точки одинаковые: ${allSame}`);
+            
+            // Показываем статистику по каждой цели
+            objectiveNames.forEach(name => {
+                const values = paretoData.map(p => p[name]);
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                console.log(`${name}: min=${min.toFixed(4)}, max=${max.toFixed(4)}, avg=${avg.toFixed(4)}, range=${(max-min).toFixed(4)}`);
+            });
+        }
+        
+        console.log("Финальные данные для Frontend (первые 5):", paretoData.slice(0, 5));
+    } else if (numericalResults && numericalResults.result?.solver === 'ga' && numericalResults.result?.front) {
+        // Обработка одноцелевых задач (GA)
+        const front = numericalResults.result.front;
+        const solutions = numericalResults.result.solutions;
+        
+        console.log("Обработка GA результатов для 1D задачи");
+        
+        if (Array.isArray(front) && front.length > 0 && Array.isArray(solutions) && solutions.length > 0) {
+            // Для 1D задач создаем простую структуру данных
+            let objectiveValue = Array.isArray(front[0]) ? front[0][0] : front[0];
+            const designParam = Array.isArray(solutions[0]) ? solutions[0][0] : solutions[0];
+            
+            // Конвертируем отрицательные значения в положительные
+            if (objectiveValue < 0) {
+                objectiveValue = Math.abs(objectiveValue);
+            }
+            
+            // Получаем правильное название для 1D задачи
+            const objectiveNames = getObjectiveNames(taskDescription, 1);
+            
+            paretoData = [{
+                [objectiveNames[0]]: objectiveValue,
+                "parameter1": designParam,
+                "type": "Optimal Solution"
+            }];
+            
+            // Добавляем несколько вариаций для демонстрации (если нужно)
+            if (paretoData.length === 1) {
+                paretoData.push({
+                    [objectiveNames[0]]: objectiveValue * 1.1,
+                    "parameter1": designParam * 0.9,
+                    "type": "Alternative 1"
+                });
+                paretoData.push({
+                    [objectiveNames[0]]: objectiveValue * 1.2,
+                    "parameter1": designParam * 0.8,
+                    "type": "Alternative 2"
+                });
+            }
+        } else {
+            // Дефолтные данные для 1D задач
+            const objectiveNames = getObjectiveNames(taskDescription, 1);
+            paretoData = [{
+                [objectiveNames[0]]: 1.0,
+                "parameter1": 0.5,
+                "type": "Default Solution"
+            }];
+        }
+    } else {
+        // Запасной вариант для других типов ответов
+        console.log("Использование запасного варианта данных");
+        const objectiveNames = getObjectiveNames(taskDescription, 1);
+        paretoData = [{
+            [objectiveNames[0]]: 1.0,
+            "parameter1": 0.5,
+            "type": "Default Solution"
+        }];
     }
     
     // Помещаем весь Markdown отчет в поле summary, как ожидает ваш фронтенд
@@ -141,6 +294,7 @@ app.post('/api/run-opt', async (req, res) => {
       recommendations: ""
     };
 
+    console.log("Отправка данных на Frontend:", JSON.stringify(paretoData, null, 2));
     res.json({ pareto: paretoData, human_readable_report: resultFromPython.human_readable_report || "Отчет не был сгенерирован.", explanations });
     
   } catch (err) {

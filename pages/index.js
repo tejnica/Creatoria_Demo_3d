@@ -121,38 +121,152 @@ export default function CreatoriaWizard() {
 
   // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
   const renderResults = () => {
-    // Извлекаем данные из сохраненного ответа
-    const paretoDataForProcessing = taskKey ? apiResponse?.pareto : apiResponse?.numerical_results?.result?.front;
+    // ДИАГНОСТИКА: Логируем полученные данные
+    console.log("=== ДИАГНОСТИКА FRONTEND ===");
+    console.log("Полный apiResponse:", apiResponse);
+    
+    if (apiResponse && apiResponse.numerical_results) {
+      console.log("numerical_results:", apiResponse.numerical_results);
+      if (apiResponse.numerical_results.result) {
+        console.log("result:", apiResponse.numerical_results.result);
+        console.log("front:", apiResponse.numerical_results.result.front);
+        console.log("metadata:", apiResponse.numerical_results.result.metadata);
+      }
+    }
+    
+    // Извлекаем данные из сохраненного ответа ИЛИ из демо-задач
+    let paretoDataForProcessing;
+    
+    if (taskKey && demoTasks[taskKey]) {
+      // Если используем демо-задачу, берем данные из demoTasks
+      paretoDataForProcessing = demoTasks[taskKey].pareto;
+    } else {
+      // Если используем реальный API, берем данные из apiResponse
+      paretoDataForProcessing = apiResponse?.pareto || apiResponse?.numerical_results?.result?.front;
+    }
+    
     if (!Array.isArray(paretoDataForProcessing) || paretoDataForProcessing.length === 0) {
         return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
     }
     
-    // Адаптируем данные, если они пришли от "живого" бэкенда или из демо
-    const processedData = paretoDataForProcessing[0]?.mass !== undefined ? paretoDataForProcessing : paretoDataForProcessing.map(point => ({
-        "mass": point[0],
-        "stiffness": point[1],
-        "cost": point.length > 2 ? point[2] : Math.random() * 10 + 90,
-        "front": "Live"
-    }));
+    // Используем данные как есть, без добавления cost и интерполяции
+    let processedData = paretoDataForProcessing;
 
     const top5 = processedData.slice(0, 5);
     const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
+    
+    // Определяем ключи целей - исключаем служебные поля
+    const actualObjectiveKeys = numericKeys.filter(k => 
+      !k.startsWith('parameter') && 
+      !k.includes('type') && 
+      !k.includes('id') &&
+      k !== 'type' &&
+      k !== 'index' &&
+      k !== 'solution_id'
+    );
+    
+    const actualNObjectives = actualObjectiveKeys.length;
+    
+    console.log(`Обнаружено ${actualNObjectives} целей:`, actualObjectiveKeys);
+    console.log(`Всего числовых полей: ${numericKeys.length}:`, numericKeys);
+    
     let plotArea = null;
 
-    if (numericKeys.length >= 3) {
-      const [k1, k2, k3] = ["stiffness", "mass", "cost"];
+    if (processedData.length < 1) {
+      plotArea = <p className="text-center text-red-400">Visualization cannot be built: no data points available.</p>;
+    } else if (actualNObjectives === 1) {
+      // Для 1D задач показываем только значение, без графика
+      const objKey = actualObjectiveKeys[0];
+      const bestValue = processedData[0][objKey];
+      
+      plotArea = (
+        <div className="text-center p-8 bg-gray-800 rounded-lg">
+          <h3 className="text-xl mb-4">Single Objective Optimization Result</h3>
+          <div className="text-3xl font-bold text-green-400 mb-2">
+            {typeof bestValue === 'number' ? bestValue.toFixed(4) : bestValue}
+          </div>
+          <div className="text-lg text-gray-300">
+            {objKey.replace('objective', 'Objective ').replace('_', ' ')}
+          </div>
+          {processedData.length > 1 && (
+            <div className="mt-4 text-sm text-gray-400">
+              Found {processedData.length} solutions. Best solution shown above.
+            </div>
+          )}
+        </div>
+      );
+    } else if (actualNObjectives === 2) {
+      // Для 2D задач показываем 2D график - используем только первые 5 точек
+      const [k1, k2] = actualObjectiveKeys;
+      const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
+      
+      // Динамические подписи осей на основе метаданных
+      const getAxisLabel = (key, metadata) => {
+        // Пытаемся найти информацию в метаданных
+        if (metadata && metadata.objectives) {
+          const objInfo = metadata.objectives.find(obj => obj.key === key);
+          if (objInfo) {
+            return objInfo.unit ? `${objInfo.name} (${objInfo.unit})` : objInfo.name;
+          }
+        }
+        
+        // Фолбэк к статическим правилам
+        if (key.includes('mass')) return 'Total Mass (kg)';
+        if (key.includes('stress')) return 'Stress Ratio';
+        if (key.includes('weight')) return 'Weight (kg)';
+        if (key.includes('strength')) return 'Stress Ratio';
+        if (key.includes('efficiency')) return 'Efficiency (%)';
+        if (key.includes('cost')) return 'Cost ($)';
+        if (key.includes('energy')) return 'Energy (kWh)';
+        if (key.includes('pressure')) return 'Pressure Drop (Pa)';
+        
+        return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      };
+      
+      // Извлекаем метаданные если доступны
+      const metadata = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
+      
+      plotArea = (
+        <Plot
+            data={[{
+                x: plotData.map(p => p[k1]),
+                y: plotData.map(p => p[k2]),
+                mode: 'markers+lines',
+                type: 'scatter',
+                marker: { size: 8, color: '#FFAA00' },
+                line: { color: '#FFAA00' }
+            }]}
+            layout={{
+              title: 'Pareto Front Visualization (2D)',
+              xaxis: { title: getAxisLabel(k1, metadata), color: '#fff', gridcolor: '#444' },
+              yaxis: { title: getAxisLabel(k2, metadata), color: '#fff', gridcolor: '#444' },
+              paper_bgcolor: '#0e1117',
+              font: { color: '#fff' },
+              height: 500,
+              autosize: true,
+              margin: { l: 10, r: 10, t: 40, b: 10 },
+            }}
+            style={{ width: '100%', height: '50vh' }}
+            config={{ responsive: true }}
+        />
+      );
+    } else if (actualNObjectives === 3) {
+      // Для 3D задач показываем 3D график - используем только первые 5 точек
+      const [k1, k2, k3] = actualObjectiveKeys;
+      const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
+      
       plotArea = (
         <Plot
             data={[{ 
-                x: processedData.map(p => p[k1]), 
-                y: processedData.map(p => p[k2]), 
-                z: processedData.map(p => p[k3]), 
+                x: plotData.map(p => p[k1]), 
+                y: plotData.map(p => p[k2]), 
+                z: plotData.map(p => p[k3]), 
                 mode: 'markers', 
                 type: 'scatter3d', 
                 marker: { size: 6, color: '#FFAA00' } 
             }]}
             layout={{
-              title: 'Pareto Front Visualization',
+              title: 'Pareto Front Visualization (3D)',
               scene: {
                 xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
                 yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
@@ -168,16 +282,30 @@ export default function CreatoriaWizard() {
             config={{ responsive: true }}
         />
       );
+    } else if (actualNObjectives > 3) {
+      plotArea = <p className="text-center text-yellow-400">Visualization for {actualNObjectives} objectives is not supported yet. Please see the table below for details.</p>;
+    } else {
+      plotArea = <p className="text-center text-red-400">Visualization cannot be built: no objectives detected.</p>;
     }
     
     return (
       <>
         {plotArea}
         <div className="mt-6 overflow-x-auto">
-          <h3 className="text-lg mb-2">Top 5 Pareto Solutions</h3>
+          <h3 className="text-lg mb-2">Top 5 Solutions</h3>
           <table className="min-w-full bg-gray-800 text-white rounded">
             <thead>
-              <tr>{Object.keys(top5[0] || {}).map(col => <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">{col}</th>)}</tr>
+              <tr>{Object.keys(top5[0] || {}).map(col => {
+                let displayName = col;
+                if (col.includes('mass') && col.includes('kg')) displayName = 'Mass (kg)';
+                else if (col.includes('stress') && col.includes('ratio')) displayName = 'Stress Ratio';
+                else if (col.includes('thickness') && col.includes('cm')) displayName = 'Thickness (cm)';
+                else if (col.includes('width') && col.includes('cm')) displayName = 'Width (cm)';
+                else if (col === 'type') displayName = 'Solution Type';
+                else displayName = col.replace(/_/g, ' ').toUpperCase();
+                
+                return <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">{displayName}</th>;
+              })}</tr>
             </thead>
             <tbody>
               {top5.map((row, i) => (
@@ -260,10 +388,15 @@ export default function CreatoriaWizard() {
                 <h2 className="text-xl">Step 3: Results</h2><span className="ml-2">📊</span>
               </div>
               {renderResults()}
-              {apiResponse?.human_readable_report && (
+              {(apiResponse?.human_readable_report || (taskKey && demoTasks[taskKey]?.explanations)) && (
                   <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
                       <h3 className="text-lg font-semibold mb-2">AI Data Summary:</h3>
-                      <p className="text-gray-200">{apiResponse.human_readable_report.match(/#\s*Резюме\s*([\s\S]*?)\n\n##/)?.[1]?.trim() || apiResponse.explanations?.summary || "Краткое саммари недоступно."}</p>
+                      <p className="text-gray-200">
+                        {apiResponse?.human_readable_report 
+                          ? (apiResponse.human_readable_report.match(/#\s*Резюме\s*([\s\S]*?)\n\n##/)?.[1]?.trim() || apiResponse.explanations?.summary || "Краткое саммари недоступно.")
+                          : (taskKey && demoTasks[taskKey]?.explanations ? demoTasks[taskKey].explanations.join(' ') : "Отчет не был сгенерирован.")
+                        }
+                      </p>
                   </div>
               )}
               <div className="flex justify-end mt-6">
