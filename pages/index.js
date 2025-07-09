@@ -173,6 +173,13 @@ export default function CreatoriaWizard() {
     let processedData = paretoDataForProcessing;
 
     const top5 = processedData.slice(0, 5);
+    
+    // ДИАГНОСТИКА: Логируем структуру данных для таблицы
+    console.log("=== ДИАГНОСТИКА ТАБЛИЦЫ ===");
+    console.log("top5:", top5);
+    console.log("top5[0]:", top5[0]);
+    console.log("Object.keys(top5[0] || {}):", Object.keys(top5[0] || {}));
+    console.log("Количество элементов в top5:", top5.length);
          // ИСПРАВЛЕНИЕ: Используем метаданные для определения целей
      const metadata = apiResponse?.numerical_results?.result?.metadata || {};
      const objectives = metadata?.objectives || [];
