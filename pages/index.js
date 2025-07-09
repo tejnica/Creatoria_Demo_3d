@@ -119,6 +119,20 @@ export default function CreatoriaWizard() {
     setStep(4);
   };
 
+  // Функция для получения читаемых названий колонок
+  const getDisplayName = (col) => {
+    // Служебные поля
+    if (col === 'type') return 'Solution Type';
+    if (col === 'id') return 'ID';
+    
+    // Для всех остальных полей: просто красиво форматируем название
+    return col
+      .replace(/_/g, ' ')           // подчеркивания в пробелы
+      .replace(/([A-Z])/g, ' $1')   // camelCase в слова
+      .trim()                       // убираем лишние пробелы
+      .replace(/\b\w/g, l => l.toUpperCase()); // каждое слово с большой буквы
+  };
+
   // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
   const renderResults = () => {
     // ДИАГНОСТИКА: Логируем полученные данные
@@ -137,13 +151,19 @@ export default function CreatoriaWizard() {
     // Извлекаем данные из сохраненного ответа ИЛИ из демо-задач
     let paretoDataForProcessing;
     
-    if (taskKey && demoTasks[taskKey]) {
-      // Если используем демо-задачу, берем данные из demoTasks
-      paretoDataForProcessing = demoTasks[taskKey].pareto;
-    } else {
-      // Если используем реальный API, берем данные из apiResponse
-      paretoDataForProcessing = apiResponse?.pareto || apiResponse?.numerical_results?.result?.front;
-    }
+         // ИСПРАВЛЕНИЕ: Всегда сначала проверяем новый формат от Backend
+     if (apiResponse?.numerical_results?.result?.front) {
+       // Новый формат от Backend - приоритет
+       paretoDataForProcessing = apiResponse.numerical_results.result.front;
+     } else if (taskKey && demoTasks[taskKey]) {
+       // Демо-задача как fallback
+       paretoDataForProcessing = demoTasks[taskKey].pareto;
+     } else {
+       // Старый формат как последний fallback
+       paretoDataForProcessing = apiResponse?.pareto;
+     }
+    
+    console.log("paretoDataForProcessing:", paretoDataForProcessing);
     
     if (!Array.isArray(paretoDataForProcessing) || paretoDataForProcessing.length === 0) {
         return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
@@ -153,19 +173,30 @@ export default function CreatoriaWizard() {
     let processedData = paretoDataForProcessing;
 
     const top5 = processedData.slice(0, 5);
-    const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
-    
-    // Определяем ключи целей - исключаем служебные поля
-    const actualObjectiveKeys = numericKeys.filter(k => 
-      !k.startsWith('parameter') && 
-      !k.includes('type') && 
-      !k.includes('id') &&
-      k !== 'type' &&
-      k !== 'index' &&
-      k !== 'solution_id'
-    );
-    
-    const actualNObjectives = actualObjectiveKeys.length;
+         // ИСПРАВЛЕНИЕ: Используем метаданные для определения целей
+     const metadata = apiResponse?.numerical_results?.result?.metadata || {};
+     const objectives = metadata?.objectives || [];
+     
+     // Определяем числовые ключи заранее для использования в логах
+     const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
+     
+     let actualObjectiveKeys = [];
+     if (objectives.length > 0) {
+       // Используем метаданные - приоритет
+       actualObjectiveKeys = objectives.map(obj => obj.key);
+     } else {
+       // Fallback: определяем цели из числовых ключей
+       actualObjectiveKeys = numericKeys.filter(k => 
+         !k.startsWith('parameter') && 
+         !k.includes('type') && 
+         !k.includes('id') &&
+         k !== 'type' &&
+         k !== 'index' &&
+         k !== 'solution_id'
+       );
+     }
+     
+     const actualNObjectives = actualObjectiveKeys.length;
     
     console.log(`Обнаружено ${actualNObjectives} целей:`, actualObjectiveKeys);
     console.log(`Всего числовых полей: ${numericKeys.length}:`, numericKeys);
@@ -295,17 +326,11 @@ export default function CreatoriaWizard() {
           <h3 className="text-lg mb-2">Top 5 Solutions</h3>
           <table className="min-w-full bg-gray-800 text-white rounded">
             <thead>
-              <tr>{Object.keys(top5[0] || {}).map(col => {
-                let displayName = col;
-                if (col.includes('mass') && col.includes('kg')) displayName = 'Mass (kg)';
-                else if (col.includes('stress') && col.includes('ratio')) displayName = 'Stress Ratio';
-                else if (col.includes('thickness') && col.includes('cm')) displayName = 'Thickness (cm)';
-                else if (col.includes('width') && col.includes('cm')) displayName = 'Width (cm)';
-                else if (col === 'type') displayName = 'Solution Type';
-                else displayName = col.replace(/_/g, ' ').toUpperCase();
-                
-                return <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">{displayName}</th>;
-              })}</tr>
+              <tr>{Object.keys(top5[0] || {}).map(col => (
+                <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">
+                  {getDisplayName(col)}
+                </th>
+              ))}</tr>
             </thead>
             <tbody>
               {top5.map((row, i) => (
