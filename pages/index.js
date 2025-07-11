@@ -354,7 +354,10 @@ export default function CreatoriaWizard() {
                 tickpadding: 8,
               },
               yaxis: {
-                title: getAxisLabel(k2, metadata),
+                title: {
+                  text: getAxisLabel(k2, metadata),
+                  standoff: 30 // увеличенный отступ для подписи оси Y
+                },
                 color: '#fff',
                 gridcolor: '#666',
                 gridwidth: 1,
@@ -373,7 +376,7 @@ export default function CreatoriaWizard() {
               font: { color: '#fff' },
               height: 500,
               autosize: true,
-              margin: { l: 60, r: 20, t: 60, b: 60 },
+              margin: { l: 100, r: 20, t: 60, b: 60 }, // увеличенный левый отступ
             }}
             style={{ width: '100%', height: '50vh' }}
             config={{ responsive: true }}
