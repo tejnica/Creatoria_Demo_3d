@@ -195,14 +195,15 @@ app.post('/api/run-opt', async (req, res) => {
         paretoData = fullFront.map((point, index) => {
             const dataPoint = { type: index < 3 ? ["Best for Objective 1", "Best for Objective 2", "Balanced"][index] : "Pareto Point" };
             
-            // Добавляем значения целей, конвертируя отрицательные в положительные
+            // Добавляем значения целей с правильными ключами
             for (let i = 0; i < nObjectives && i < point.length; i++) {
                 let value = point[i];
                 // Если значение отрицательное (от maximize целей), инвертируем его
                 if (value < 0) {
                     value = Math.abs(value);
                 }
-                dataPoint[objectiveNames[i]] = value;
+                // Используем общие ключи objective_1, objective_2 вместо названий
+                dataPoint[`objective_${i+1}`] = value;
             }
             
             return dataPoint;
@@ -211,22 +212,25 @@ app.post('/api/run-opt', async (req, res) => {
         console.log("=== АНАЛИЗ РАЗНООБРАЗИЯ ДАННЫХ ===");
         if (paretoData.length > 1) {
             const firstPoint = paretoData[0];
+            const objectiveKeys = Array.from({length: nObjectives}, (_, i) => `objective_${i+1}`);
             const allSame = paretoData.every(point => 
-                objectiveNames.every(name => Math.abs(point[name] - firstPoint[name]) < 0.001)
+                objectiveKeys.every(key => Math.abs(point[key] - firstPoint[key]) < 0.001)
             );
             console.log(`Все точки одинаковые: ${allSame}`);
             
             // Показываем статистику по каждой цели
-            objectiveNames.forEach(name => {
-                const values = paretoData.map(p => p[name]);
+            objectiveKeys.forEach(key => {
+                const values = paretoData.map(p => p[key]);
                 const min = Math.min(...values);
                 const max = Math.max(...values);
                 const avg = values.reduce((a, b) => a + b, 0) / values.length;
-                console.log(`${name}: min=${min.toFixed(4)}, max=${max.toFixed(4)}, avg=${avg.toFixed(4)}, range=${(max-min).toFixed(4)}`);
+                console.log(`${key}: min=${min.toFixed(4)}, max=${max.toFixed(4)}, avg=${avg.toFixed(4)}, range=${(max-min).toFixed(4)}`);
             });
         }
         
         console.log("Финальные данные для Frontend (первые 5):", paretoData.slice(0, 5));
+        console.log("ДИАГНОСТИКА: Ключи первого элемента:", Object.keys(paretoData[0]));
+        console.log("ДИАГНОСТИКА: Значения первого элемента:", Object.values(paretoData[0]));
     } else if (numericalResults && numericalResults.result?.solver === 'ga' && numericalResults.result?.front) {
         // Обработка одноцелевых задач (GA)
         const front = numericalResults.result.front;
@@ -295,7 +299,24 @@ app.post('/api/run-opt', async (req, res) => {
     };
 
     console.log("Отправка данных на Frontend:", JSON.stringify(paretoData, null, 2));
-    res.json({ pareto: paretoData, human_readable_report: resultFromPython.human_readable_report || "Отчет не был сгенерирован.", explanations });
+    
+    // ИСПРАВЛЕНИЕ: Передаем И старый формат pareto И новый numerical_results
+    const responseData = {
+      pareto: paretoData,
+      human_readable_report: resultFromPython.human_readable_report || "Отчет не был сгенерирован.",
+      explanations,
+      numerical_results: resultFromPython.numerical_results  // ← ДОБАВЛЯЕМ numerical_results!
+    };
+    
+    console.log("=== ФИНАЛЬНЫЙ ОТВЕТ ДЛЯ FRONTEND ===");
+    console.log("Структура ответа:", Object.keys(responseData));
+    console.log("Наличие numerical_results:", !!responseData.numerical_results);
+    if (responseData.numerical_results?.result?.front) {
+      console.log("Количество точек в numerical_results.result.front:", responseData.numerical_results.result.front.length);
+      console.log("Первая точка в numerical_results.result.front:", responseData.numerical_results.result.front[0]);
+    }
+    
+    res.json(responseData);
     
   } catch (err) {
     console.error("Критическая ошибка в /api/run-opt:", err);

@@ -17,16 +17,6 @@ import { marked } from 'marked'; // Убедитесь, что эта библи
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
-// Функция для форматирования чисел с сокращением (1 000 000 → 1M, 15000 → 15.0K)
-function formatNumber(value) {
-  if (typeof value !== 'number') return value;
-  if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(2) + 'B';
-  if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(2) + 'M';
-  if (Math.abs(value) >= 1e3) return (value / 1e3).toFixed(2) + 'K';
-  if (Math.abs(value) >= 1) return value.toFixed(2);
-  return value.toExponential(2);
-}
-
 export default function CreatoriaWizard() {
   const [step, setStep] = useState(1);
   const [taskKey, setTaskKey] = useState('');
@@ -147,7 +137,7 @@ export default function CreatoriaWizard() {
       
       // Проверяем переменные
       if (metadata.variables) {
-        const varInfo = metadata.variables.find(v => v.key === col);
+        const varInfo = metadata.variables.find(var => var.key === col);
         if (varInfo) {
           return varInfo.unit ? `${varInfo.name} (${varInfo.unit})` : varInfo.name;
         }
@@ -173,24 +163,24 @@ export default function CreatoriaWizard() {
     // Извлекаем данные из сохраненного ответа ИЛИ из демо-задач
     let paretoDataForProcessing;
     
-    // ИСПРАВЛЕНИЕ: Всегда сначала проверяем новый формат от Backend
-    if (apiResponse?.numerical_results?.result?.front) {
-      // Новый формат от Backend - приоритет
-      paretoDataForProcessing = apiResponse.numerical_results.result.front;
-    } else if (taskKey && demoTasks[taskKey]) {
-      // Демо-задача как fallback
-      paretoDataForProcessing = demoTasks[taskKey].pareto;
-    } else {
-      // Старый формат как последний fallback
-      paretoDataForProcessing = apiResponse?.pareto;
-      
-      // Проверяем качество данных
-      if (paretoDataForProcessing && paretoDataForProcessing.length > 0 && 
-          Object.keys(paretoDataForProcessing[0]).length === 1 && 
-          paretoDataForProcessing[0].type) {
-        console.warn("Получены неполные данные от Backend - только типы решений без числовых значений");
-      }
-    }
+         // ИСПРАВЛЕНИЕ: Всегда сначала проверяем новый формат от Backend
+     if (apiResponse?.numerical_results?.result?.front) {
+       // Новый формат от Backend - приоритет
+       paretoDataForProcessing = apiResponse.numerical_results.result.front;
+     } else if (taskKey && demoTasks[taskKey]) {
+       // Демо-задача как fallback
+       paretoDataForProcessing = demoTasks[taskKey].pareto;
+     } else {
+       // Старый формат как последний fallback
+       paretoDataForProcessing = apiResponse?.pareto;
+       
+       // Проверяем качество данных
+       if (paretoDataForProcessing && paretoDataForProcessing.length > 0 && 
+           Object.keys(paretoDataForProcessing[0]).length === 1 && 
+           paretoDataForProcessing[0].type) {
+         console.warn("Получены неполные данные от Backend - только типы решений без числовых значений");
+       }
+     }
     
 
     
@@ -252,13 +242,6 @@ export default function CreatoriaWizard() {
       const objKey = actualObjectiveKeys[0];
       const bestValue = processedData[0][objKey];
       
-      // Извлекаем метаданные для отображения единиц
-      const metadata1D = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      const objectiveInfo = metadata1D?.objectives?.find(obj => obj.key === objKey);
-      const displayName = objectiveInfo ? 
-        (objectiveInfo.unit ? `${objectiveInfo.name} (${objectiveInfo.unit})` : objectiveInfo.name) :
-        objKey.replace('objective', 'Objective ').replace('_', ' ');
-      
       plotArea = (
         <div className="text-center p-8 bg-gray-800 rounded-lg">
           <h3 className="text-xl mb-4">Single Objective Optimization Result</h3>
@@ -266,7 +249,7 @@ export default function CreatoriaWizard() {
             {typeof bestValue === 'number' ? bestValue.toFixed(4) : bestValue}
           </div>
           <div className="text-lg text-gray-300">
-            {displayName}
+            {objKey.replace('objective', 'Objective ').replace('_', ' ')}
           </div>
           {processedData.length > 1 && (
             <div className="mt-4 text-sm text-gray-400">
@@ -279,14 +262,17 @@ export default function CreatoriaWizard() {
       // Для 2D задач показываем 2D график - используем только первые 5 точек
       const [k1, k2] = actualObjectiveKeys;
       const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
+      
       // Динамические подписи осей на основе метаданных
       const getAxisLabel = (key, metadata) => {
+        // Пытаемся найти информацию в метаданных
         if (metadata && metadata.objectives) {
           const objInfo = metadata.objectives.find(obj => obj.key === key);
           if (objInfo) {
             return objInfo.unit ? `${objInfo.name} (${objInfo.unit})` : objInfo.name;
           }
         }
+        
         // Фолбэк к статическим правилам
         if (key.includes('mass')) return 'Total Mass (kg)';
         if (key.includes('stress')) return 'Stress Ratio';
@@ -296,20 +282,13 @@ export default function CreatoriaWizard() {
         if (key.includes('cost')) return 'Cost ($)';
         if (key.includes('energy')) return 'Energy (kWh)';
         if (key.includes('pressure')) return 'Pressure Drop (Pa)';
+        
         return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       };
+      
+      // Извлекаем метаданные если доступны
       const metadata = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      // Формируем кастомные hovertext для каждой точки
-      const hoverTexts = plotData.map((p, idx) => {
-        const xVal = p[k1];
-        const yVal = p[k2];
-        // Извлекаем единицы из метаданных
-        const xUnit = (metadata?.objectives?.find(obj => obj.key === k1)?.unit) || '';
-        const yUnit = (metadata?.objectives?.find(obj => obj.key === k2)?.unit) || '';
-        // Тип решения
-        const type = p.type ? `<b>${p.type}</b><br/>` : '';
-        return `${type}${getAxisLabel(k1, metadata)}: <b>${xVal}</b> ${xUnit}<br/>${getAxisLabel(k2, metadata)}: <b>${yVal}</b> ${yUnit}`;
-      });
+      
       plotArea = (
         <Plot
             data={[{
@@ -317,63 +296,18 @@ export default function CreatoriaWizard() {
                 y: plotData.map(p => p[k2]),
                 mode: 'markers+lines',
                 type: 'scatter',
-                marker: { 
-                  size: 10, 
-                  color: '#FFAA00',
-                  line: { color: '#fff', width: 1 }
-                },
-                line: { 
-                  color: '#FFAA00',
-                  width: 2
-                },
-                text: hoverTexts,
-                hoverinfo: 'text',
-                hoverlabel: { bgcolor: '#222', bordercolor: '#FFAA00', font: { color: '#fff' } },
+                marker: { size: 8, color: '#FFAA00' },
+                line: { color: '#FFAA00' }
             }]}
             layout={{
-              title: {
-                text: 'Pareto Front Visualization (2D)',
-                font: { size: 18, color: '#fff', weight: 'bold' },
-                x: 0.5,
-                xanchor: 'center'
-              },
-              xaxis: {
-                title: getAxisLabel(k1, metadata),
-                color: '#fff',
-                gridcolor: '#666',
-                gridwidth: 1,
-                linecolor: '#fff',
-                linewidth: 2,
-                tickformat: '',
-                tickvals: plotData.map(p => p[k1]),
-                ticktext: plotData.map(p => formatNumber(p[k1])),
-                titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                tickfont: { size: 12, color: '#fff' },
-                tickmode: 'array',
-                tickangle: 0,
-                tickpadding: 8,
-              },
-              yaxis: {
-                title: getAxisLabel(k2, metadata),
-                color: '#fff',
-                gridcolor: '#666',
-                gridwidth: 1,
-                linecolor: '#fff',
-                linewidth: 2,
-                tickformat: '',
-                tickvals: plotData.map(p => p[k2]),
-                ticktext: plotData.map(p => formatNumber(p[k2])),
-                titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                tickfont: { size: 12, color: '#fff' },
-                tickmode: 'array',
-                tickangle: 0,
-                tickpadding: 8,
-              },
+              title: 'Pareto Front Visualization (2D)',
+              xaxis: { title: getAxisLabel(k1, metadata), color: '#fff', gridcolor: '#444' },
+              yaxis: { title: getAxisLabel(k2, metadata), color: '#fff', gridcolor: '#444' },
               paper_bgcolor: '#0e1117',
               font: { color: '#fff' },
               height: 500,
               autosize: true,
-              margin: { l: 60, r: 20, t: 60, b: 60 },
+              margin: { l: 10, r: 10, t: 40, b: 10 },
             }}
             style={{ width: '100%', height: '50vh' }}
             config={{ responsive: true }}
@@ -384,9 +318,6 @@ export default function CreatoriaWizard() {
       const [k1, k2, k3] = actualObjectiveKeys;
       const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
       
-      // Извлекаем метаданные для 3D графика
-      const metadata3D = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      
       plotArea = (
         <Plot
             data={[{ 
@@ -395,56 +326,20 @@ export default function CreatoriaWizard() {
                 z: plotData.map(p => p[k3]), 
                 mode: 'markers', 
                 type: 'scatter3d', 
-                marker: { 
-                  size: 8, 
-                  color: '#FFAA00',
-                  line: { color: '#fff', width: 1 }
-                } 
+                marker: { size: 6, color: '#FFAA00' } 
             }]}
             layout={{
-              title: {
-                text: 'Pareto Front Visualization (3D)',
-                font: { size: 18, color: '#fff', weight: 'bold' },
-                x: 0.5,
-                xanchor: 'center'
-              },
+              title: 'Pareto Front Visualization (3D)',
               scene: {
-                xaxis: { 
-                  title: getAxisLabel(k1, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
-                yaxis: { 
-                  title: getAxisLabel(k2, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
-                zaxis: { 
-                  title: getAxisLabel(k3, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
+                xaxis: { title: k1, color: '#fff', gridcolor: '#444' },
+                yaxis: { title: k2, color: '#fff', gridcolor: '#444' },
+                zaxis: { title: k3, color: '#fff', gridcolor: '#444' },
               },
               paper_bgcolor: '#0e1117',
               font: { color: '#fff' },
               height: 600,
               autosize: true,
-              margin: { l: 60, r: 20, t: 60, b: 60 },
+              margin: { l: 10, r: 10, t: 40, b: 10 },
             }}
             style={{ width: '100%', height: '60vh' }}
             config={{ responsive: true }}
