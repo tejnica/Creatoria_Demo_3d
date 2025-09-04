@@ -1,31 +1,17 @@
-﻿// ==============================================================================
-// Файл: pages/index.js
-// Версия: Финальная, отлаженная, с восстановленным UI
-//
-// Изменения:
-// 1. Полностью восстановлена ваша оригинальная JSX-разметка для всех шагов.
-// 2. Логика обработки ответа от API перенесена полностью сюда,
-//    чтобы избежать ошибок и корректно отображать все данные.
-// ==============================================================================
-
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import demoTasks from '../src/demoTasks.json';
 import Stepper from '../src/components/Stepper';
-import { marked } from 'marked'; // Убедитесь, что эта библиотека установлена: npm install marked
+import ClarifierDialog from '../src/components/ClarifierDialog';
+import TranslationReviewPanel from '../src/components/TranslationReviewPanel';
+import { generateYaml, generateYamlEnhanced, runOptimization, startClarification, answerClarification, translateText, analyzeSemantics } from '../src/api/solver';
+import { marked } from 'marked';
+import ResultViewer from '../src/components/ResultViewer';
+import ErrorBoundary from '../src/components/ErrorBoundary';
+import { useToast, ToastContainer } from '../src/components/Toast';
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
-
-// Функция для форматирования чисел с сокращением (1 000 000 → 1M, 15000 → 15.0K)
-function formatNumber(value) {
-  if (typeof value !== 'number') return value;
-  if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(2) + 'B';
-  if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(2) + 'M';
-  if (Math.abs(value) >= 1e3) return (value / 1e3).toFixed(2) + 'K';
-  if (Math.abs(value) >= 1) return value.toFixed(2);
-  return value.toExponential(2);
-}
 
 export default function CreatoriaWizard() {
   const [step, setStep] = useState(1);
@@ -34,12 +20,36 @@ export default function CreatoriaWizard() {
   const [yamlText, setYamlText] = useState('');
   const [goalVariables, setGoalVariables] = useState([]);
   const [constraints, setConstraints] = useState([]);
+  const [preparser, setPreparser] = useState(null);
+  const [pendingClarification, setPendingClarification] = useState(false);
   
-  // Здесь будут храниться все данные, полученные от API
+  // Clarification state
+  const [clarificationOpen, setClarificationOpen] = useState(false);
+  const [clarificationRequest, setClarificationRequest] = useState(null);
+  const [conversationHistory, setConversationHistory] = useState([]);
+  const [clarificationLoading, setClarificationLoading] = useState(false);
+  // Дополнительные состояния для Clarifier-loop
+  const [clarAnswer, setClarAnswer] = useState('');
+  const [statusMap, setStatusMap] = useState({});
+  const [attemptsLeft, setAttemptsLeft] = useState(3);
+  const [sessionId, setSessionId] = useState(null);
+  
+  // API response state
   const [apiResponse, setApiResponse] = useState(null); 
-  
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  // T16: Translation states
+  const [showTranslationReview, setShowTranslationReview] = useState(false);
+  const [translationData, setTranslationData] = useState(null);
+  const [translationLoading, setTranslationLoading] = useState(false);
+
+  // T16 Phase 2.3: Semantic Analysis states
+  const [semanticAnalysis, setSemanticAnalysis] = useState(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+
+  // Toast notifications
+  const { toasts, addToast, removeToast } = useToast();
 
   function extractDescriptions(item) {
     if (typeof item === 'string') return item;
@@ -52,549 +62,668 @@ export default function CreatoriaWizard() {
   const handleGenerateYaml = async () => {
     if (!description.trim()) return alert('Enter a description');
     setRunning(true);
+    setTranslationLoading(true);
+    
     try {
-      const res = await fetch('/api/generate-yaml', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to generate YAML');
-      setYamlText(json.yaml);
-      setGoalVariables((json.data.goals || []).map(extractDescriptions));
-      setConstraints((json.data.constraints || []).map(extractDescriptions));
-      setStep(2);
+      // T16 Phase 1: First translate the text to English
+      const translationResult = await translateText(description);
+      
+      // Store translation data for review
+      setTranslationData(translationResult);
+      
+      // If text was already in English or translation confidence is high, show translation review
+      if (translationResult.detected_language !== 'en' || translationResult.confidence < 0.95) {
+        setShowTranslationReview(true);
+        setRunning(false);
+        setTranslationLoading(false);
+        return;
+      }
+      
+      // If English text with high confidence, proceed directly
+      await proceedWithParsing(translationResult.translated_text);
+      
     } catch (err) {
-      alert('YAML error: ' + err.message);
+      addToast(`Translation failed: ${err.message}`, 'error');
+      setRunning(false);
+      setTranslationLoading(false);
+    }
+  };
+
+  // T16: Function to proceed with parsing after translation confirmation
+  const proceedWithParsing = async (finalText) => {
+    setTranslationLoading(true);
+    try {
+      // Step 1: Generate initial YAML using the final (translated) text
+      const result = await generateYaml(finalText);
+      setPreparser(result?.debug_preparser || null);
+      
+      // Decide if clarification is needed
+      const solverInput = result?.solver_input || {};
+      const hasObjectives = Array.isArray(solverInput.objectives) && solverInput.objectives.length > 0;
+      const hasVariables = Array.isArray(solverInput.variables) && solverInput.variables.length > 0;
+      const needClar = (result?.warnings && result.warnings.length > 0) || !hasObjectives || !hasVariables;
+
+      // Всегда сначала показываем Step 2
+      setYamlText(JSON.stringify(solverInput, null, 2));
+      const objList1 = Array.isArray(solverInput?.objectives)
+        ? solverInput.objectives
+        : (Array.isArray(solverInput?.objective)
+            ? solverInput.objective
+            : (solverInput?.objective ? [solverInput.objective] : []));
+      setGoalVariables(objList1.map(extractDescriptions));
+      setConstraints((solverInput?.constraints || []).map(extractDescriptions));
+      setStep(2);
+
+      setPendingClarification(!!needClar);
+      setShowTranslationReview(false);
+    } catch (err) {
+      addToast(`YAML generation failed: ${err.message}`, 'error');
     } finally {
       setRunning(false);
+      setTranslationLoading(false);
     }
+  };
+
+  // T16: Translation review handlers
+  const handleTranslationConfirm = (editedText) => {
+    proceedWithParsing(editedText);
+  };
+
+  const handleTranslationBack = () => {
+    setShowTranslationReview(false);
+    setTranslationData(null);
+  };
+
+  const handleTranslationTextChange = (newText) => {
+    if (translationData) {
+      setTranslationData({
+        ...translationData,
+        translated_text: newText
+      });
+    }
+  };
+
+  // T16 Phase 2.3: Semantic Analysis handlers
+  const handleAnalyzeSemantics = async (text) => {
+    setSemanticLoading(true);
+    try {
+      const result = await analyzeSemantics({
+        text: text,
+        language: translationData?.detected_language || 'en'
+      });
+      
+      setSemanticAnalysis(result);
+      
+      if (result.success) {
+        addToast('✅ Семантический анализ завершен успешно', 'success');
+      } else {
+        addToast('⚠️ Семантический анализ завершен с ошибками', 'warning');
+      }
+    } catch (error) {
+      console.error('Semantic analysis error:', error);
+      addToast(`Ошибка семантического анализа: ${error.message}`, 'error');
+      setSemanticAnalysis({ success: false, error: error.message });
+    } finally {
+      setSemanticLoading(false);
+    }
+  };
+
+  const handleUseSemanticResults = (analysisResult) => {
+    // Используем enhanced generate-yaml с семантическими результатами
+    proceedWithSemanticResults(analysisResult);
+  };
+
+  const proceedWithSemanticResults = async (analysisResult) => {
+    try {
+      // Используем enhanced API с session_id для засеивания ClarifierAgent
+      const text = translationData?.translated_text || description;
+      const enhancedResult = await generateYamlEnhanced({
+        description: text,
+        use_semantic_parser: true,
+        session_id: analysisResult.session_id
+      });
+
+      // Обрабатываем результат
+      if (enhancedResult.enhanced_by_semantic_parser) {
+        addToast('✅ Используются результаты семантического анализа', 'success');
+      }
+
+      // Переходим к clarification с засеянной сессией
+      setShowTranslationReview(false);
+      setSessionId(enhancedResult.semantic_analysis?.session_id);
+      
+      // Запускаем clarification loop с засеянными данными
+      const clarificationResult = await startClarification();
+      if (clarificationResult.need_clarification) {
+        const req = clarificationResult.clarification_request;
+        setClarificationRequest(req);
+        setStatusMap({});
+        setConversationHistory([]);
+        setClarificationOpen(true);
+        setAttemptsLeft(req?.attempts_left ?? 3);
+        
+        if (req.session_id) {
+          setSessionId(req.session_id);
+        }
+      } else {
+        // Нет нужды в уточнениях - сразу переходим к Step 2
+        setYamlText(JSON.stringify(clarificationResult.solver_input, null, 2));
+        const objList = Array.isArray(clarificationResult.solver_input?.objectives)
+          ? clarificationResult.solver_input.objectives
+          : [];
+        setGoalVariables(objList.map(extractDescriptions));
+        setConstraints((clarificationResult.solver_input?.constraints || []).map(extractDescriptions));
+        setStep(2);
+      }
+      
+    } catch (error) {
+      console.error('Enhanced processing error:', error);
+      addToast(`Ошибка обработки: ${error.message}`, 'error');
+      // Fallback to normal processing
+      proceedWithParsing(translationData?.translated_text || description);
+    }
+  };
+
+  const handleStartClarification = async () => {
+    try {
+      const clarificationResult = await startClarification();
+      if (clarificationResult.need_clarification) {
+        const req = clarificationResult.clarification_request;
+        if (clarificationResult.session_id && !sessionId) {
+          setSessionId(clarificationResult.session_id);
+        }
+        setClarificationRequest(req);
+        // Инициализация карты статусов на основе ordered_missing
+        if (req?.ordered_missing) {
+          const initialStatusMap = {};
+          req.ordered_missing.forEach(field => {
+            let frontendStatus = field.status;
+            if (field.status === 'active') frontendStatus = 'missing';
+            if (field.status === 'pending') frontendStatus = 'pending';
+            initialStatusMap[field.id] = frontendStatus;
+          });
+          setStatusMap(initialStatusMap);
+        }
+        setAttemptsLeft(req?.attempts_left ?? 3);
+        setClarificationOpen(true);
+        setConversationHistory([]);
+      } else if (clarificationResult.solver_input) {
+        // На случай если бэкенд вернул итог сразу
+        const si = clarificationResult.solver_input;
+        setYamlText(JSON.stringify(si, null, 2));
+        const objList2 = Array.isArray(si?.objectives)
+          ? si.objectives
+          : (Array.isArray(si?.objective) ? si.objective : (si?.objective ? [si.objective] : []));
+        setGoalVariables(objList2.map(extractDescriptions));
+        setConstraints((si?.constraints || []).map(extractDescriptions));
+        setPendingClarification(false);
+      }
+    } catch (err) {
+      addToast(`Clarification failed: ${err.message}`, 'error');
+    }
+  };
+
+  const handleClarificationSubmit = async (userAnswer) => {
+    setClarificationLoading(true);
+    try {
+      // Определяем текущее активное поле (current_field из clarification_request)
+      const currentFieldId = clarificationRequest?.current_field || 
+                           clarificationRequest?.ordered_missing?.find(f => f.status === 'active')?.id;
+      
+      const result = await answerClarification(
+        currentFieldId,
+        userAnswer,
+        conversationHistory,
+        sessionId || undefined
+      );
+      
+      // UX toasts
+      if (result.auto_default) {
+        addToast(`Auto-default used for ${currentFieldId}: ${result.default_value}`, 'warning');
+      } else if (result.accepted === false && result.reason) {
+        addToast(`Answer rejected: ${result.reason}`, 'warning');
+      }
+
+      // Сохраняем session_id если бэкенд его вернёт (на случай будущего расширения)
+      if (result.session_id && !sessionId) {
+        setSessionId(result.session_id);
+      }
+
+      // Обновляем историю диалога с более детальными сообщениями
+      let assistantMessage = '';
+      if (result.accepted === true) {
+        assistantMessage = '✅ Answer accepted. Moving to next field.';
+      } else if (result.auto_default) {
+        assistantMessage = `❌ Max attempts reached (3/3). Using default: ${result.default_value}. Moving to next field.`;
+      } else if (result.clarification_request && typeof result.accepted === 'undefined') {
+        assistantMessage = '→ Next field.'; // neutral transition, not a reject
+      } else {
+        const att = typeof result.attempts === 'number' ? result.attempts : '?';
+        const reason = result.reason || 'Please try again.';
+        assistantMessage = `❌ Answer rejected (${att}/3): ${reason}`;
+      }
+
+      const newHistory = [
+        ...conversationHistory,
+        { role: 'user', content: userAnswer },
+        // добавляем ответ ассистента только если есть явное сообщение
+        ...(assistantMessage ? [{ role: 'assistant', content: assistantMessage }] : [])
+      ];
+      setConversationHistory(newHistory);
+
+      // Обновляем статус полей на основе новой clarification_request
+      if (result.clarification_request?.ordered_missing) {
+        const newStatusMap = {};
+        result.clarification_request.ordered_missing.forEach(field => {
+          // Маппинг статусов Backend → Frontend
+          let frontendStatus = field.status;
+          if (field.status === 'active') frontendStatus = 'missing'; // Активное поле отображается как "missing"
+          if (field.status === 'pending') frontendStatus = 'pending';
+          if (field.status === 'resolved') frontendStatus = 'resolved';
+          if (field.status === 'conflict') frontendStatus = 'conflict';
+          if (field.status === 'default') frontendStatus = 'default';
+          
+          newStatusMap[field.id] = frontendStatus;
+        });
+        setStatusMap(newStatusMap);
+      }
+
+      // Обновляем счетчик попыток
+      if (result.clarification_request) {
+        setClarificationRequest(result.clarification_request);
+        setAttemptsLeft(result.clarification_request?.attempts_left ?? 3);
+      }
+
+      // Завершение цикла — получили solver_input
+      if (result.solver_input) {
+        setClarificationOpen(false);
+        setYamlText(JSON.stringify(result.solver_input, null, 2));
+        const objList2 = Array.isArray(result.solver_input?.objectives)
+          ? result.solver_input.objectives
+          : (Array.isArray(result.solver_input?.objective)
+              ? result.solver_input.objective
+              : (result.solver_input?.objective ? [result.solver_input.objective] : []));
+        setGoalVariables(objList2.map(extractDescriptions));
+        setConstraints((result.solver_input?.constraints || []).map(extractDescriptions));
+        setStep(2);
+        addToast('✅ All clarifications completed! Configuration ready.', 'success');
+      }
+
+    } catch (err) {
+      addToast(`Clarification failed: ${err.message}`, 'error');
+    } finally {
+      setClarificationLoading(false);
+    }
+  };
+
+  // Отправка ответа из модального окна Clarifier
+  const handleClarificationSend = () => {
+    if (!clarAnswer.trim()) return;
+    handleClarificationSubmit(clarAnswer.trim());
+    setClarAnswer('');
+  };
+
+  // Pick field from table for editing
+  const handlePickField = (fieldId) => {
+    setClarAnswer('');
+    setClarificationRequest(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev };
+      updated.current_field = fieldId;
+      if (Array.isArray(updated.ordered_missing)) {
+        updated.ordered_missing = updated.ordered_missing.map((f) => ({
+          ...f,
+          status: f.id === fieldId
+            ? 'active'
+            : (f.status === 'resolved' || f.status === 'default' ? f.status : 'pending')
+        }));
+      }
+      return updated;
+    });
+  };
+
+  // Edit last answer (one-step undo)
+  const handleEditLast = () => {
+    const lastUser = [...conversationHistory].reverse().find(m => m.role === 'user');
+    if (lastUser) setClarAnswer(lastUser.content);
+    setClarificationRequest(prev => {
+      if (!prev?.ordered_missing) return prev;
+      const currentId = prev.current_field || prev.ordered_missing.find(f => f.status === 'active')?.id;
+      const idx = prev.ordered_missing.findIndex(f => f.id === currentId);
+      const prevIdx = idx > 0 ? idx - 1 : idx;
+      const targetId = prev.ordered_missing[prevIdx]?.id;
+      const updated = { ...prev, current_field: targetId };
+      updated.ordered_missing = prev.ordered_missing.map((f,i) => ({
+        ...f,
+        status: i === prevIdx
+          ? 'active'
+          : (f.status === 'resolved' || f.status === 'default' ? f.status : 'pending')
+      }));
+      return updated;
+    });
   };
 
   const handleSelectDemo = () => {
     if (!taskKey) return;
     const demo = demoTasks[taskKey];
     setDescription(demo.description);
-    setYamlText(`goals:\n  - ${demo.goals.join('\n  - ')}\n\nconstraints:\n  - ${demo.constraints.join('\n  - ')}`);
+    setYamlText(`goals\n  - ${demo.goals.join('\n  - ')}\n\nconstraints\n  - ${demo.constraints.join('\n  - ')}`);
     setGoalVariables(demo.goals);
     setConstraints(demo.constraints);
-    setApiResponse(demo); // Загружаем демо-данные для отображения
+    setApiResponse(demo);
     setStep(2);
   };
 
-  const runOptimization = () => {
+  const runOptimizationStep = async () => {
     setRunning(true);
     setProgress(0);
     const interval = setInterval(() => setProgress(p => Math.min(100, p + 20)), 300);
     
-    // Если выбран демо-режим, просто переходим на следующий шаг
-    if (taskKey) {
+    try {
+      if (taskKey) {
+        // Demo mode
         clearInterval(interval);
         setRunning(false);
         setProgress(100);
         setStep(3);
         return;
-    }
+      }
 
-    // В "живом" режиме мы передаем `description`
-    const payload = { description };
-
-    fetch('/api/run-opt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then(r => r.json())
-      .then(res => {
-        clearInterval(interval);
-        setRunning(false);
-        setProgress(100);
-
-        if (res.error) {
-            throw new Error(res.error);
-        }
-        
-        // Сохраняем ВЕСЬ ответ от API в одно состояние
-        setApiResponse(res);
-        setStep(3);
-      })
-      .catch(err => {
-        clearInterval(interval);
-        setRunning(false);
-        alert('Optimization error: ' + err.message);
+      // Real optimization
+      const solverInput = JSON.parse(yamlText);
+      const result = await runOptimization({
+        problem_ir: {
+          task_id: `task_${Date.now()}`,
+          ...solverInput
+        },
+        generate_report: true,
+        save_artifacts: false
       });
+      
+      clearInterval(interval);
+      setApiResponse(result);
+      setProgress(100);
+      setStep(3);
+      
+    } catch (err) {
+      clearInterval(interval);
+      addToast(`Optimization failed: ${err.message}`, 'error');
+    } finally {
+      setRunning(false);
+    }
   };
 
-  const handleFullAnalysis = () => {
-    setStep(4);
-  };
-
-  // Функция для получения читаемых названий колонок
-  const getDisplayName = (col, metadata) => {
-    // Служебные поля
-    if (col === 'type') return 'Solution Type';
-    if (col === 'id') return 'ID';
-    
-    // Пытаемся найти информацию в метаданных
-    if (metadata) {
-      // Проверяем цели
-      if (metadata.objectives) {
-        const objInfo = metadata.objectives.find(obj => obj.key === col);
-        if (objInfo) {
-          return objInfo.unit ? `${objInfo.name} (${objInfo.unit})` : objInfo.name;
-        }
-      }
-      
-      // Проверяем переменные
-      if (metadata.variables) {
-        const varInfo = metadata.variables.find(v => v.key === col);
-        if (varInfo) {
-          return varInfo.unit ? `${varInfo.name} (${varInfo.unit})` : varInfo.name;
-        }
-      }
-    }
-    
-    // Для всех остальных полей: просто красиво форматируем название
-    return col
-      .replace(/_/g, ' ')           // подчеркивания в пробелы
-      .replace(/([A-Z])/g, ' $1')   // camelCase в слова
-      .trim()                       // убираем лишние пробелы
-      .replace(/\b\w/g, l => l.toUpperCase()); // каждое слово с большой буквы
-  };
-
-  // --- НОВАЯ, БОЛЕЕ НАДЕЖНАЯ ФУНКЦИЯ РЕНДЕРИНГА ---
-  const renderResults = () => {
-    // ДИАГНОСТИКА: Логируем полученные данные
-    // Проверяем наличие данных для отладки (только при необходимости)
-    if (!apiResponse?.numerical_results?.result?.front && !apiResponse?.pareto && !(taskKey && demoTasks[taskKey])) {
-      console.warn("Нет данных для отображения результатов оптимизации");
-    }
-    
-    // Извлекаем данные из сохраненного ответа ИЛИ из демо-задач
-    let paretoDataForProcessing;
-    
-    // ИСПРАВЛЕНИЕ: Всегда сначала проверяем новый формат от Backend
-    if (apiResponse?.numerical_results?.result?.front) {
-      // Новый формат от Backend - приоритет
-      paretoDataForProcessing = apiResponse.numerical_results.result.front;
-    } else if (taskKey && demoTasks[taskKey]) {
-      // Демо-задача как fallback
-      paretoDataForProcessing = demoTasks[taskKey].pareto;
-    } else {
-      // Старый формат как последний fallback
-      paretoDataForProcessing = apiResponse?.pareto;
-      
-      // Проверяем качество данных
-      if (paretoDataForProcessing && paretoDataForProcessing.length > 0 && 
-          Object.keys(paretoDataForProcessing[0]).length === 1 && 
-          paretoDataForProcessing[0].type) {
-        console.warn("Получены неполные данные от Backend - только типы решений без числовых значений");
-      }
-    }
-    
-
-    
-    if (!Array.isArray(paretoDataForProcessing) || paretoDataForProcessing.length === 0) {
-        return <p className="text-center text-yellow-400">Результаты вычислений недоступны или имеют неверный формат.</p>;
-    }
-    
-    // Используем данные как есть, без добавления cost и интерполяции
-    // Фильтруем элементы, у которых есть хотя бы одно числовое значение.
-    let processedData = paretoDataForProcessing.filter(entry => Object.values(entry).some(v => typeof v === 'number'));
-
-    // Если после фильтрации ничего не осталось — откатываемся к оригинальным данным.
-    if (processedData.length === 0) processedData = paretoDataForProcessing;
-
-    const top5 = processedData.slice(0, 5);
-    
-
-         // Используем метаданные для определения целей
-     const metadata = apiResponse?.numerical_results?.result?.metadata || {};
-     const objectives = metadata?.objectives || [];
-     
-     // Определяем числовые ключи
-     const numericKeys = Object.keys(top5[0] || {}).filter(k => typeof top5[0][k] === 'number');
-     
-     let actualObjectiveKeys = [];
-     if (objectives.length > 0) {
-       // Используем метаданные - приоритет
-       actualObjectiveKeys = objectives.map(obj => obj.key);
-     } else {
-       // Fallback: определяем цели из числовых ключей
-       actualObjectiveKeys = numericKeys.filter(k => 
-         !k.startsWith('parameter') && 
-         !k.includes('type') && 
-         !k.includes('id') &&
-         k !== 'type' &&
-         k !== 'index' &&
-         k !== 'solution_id'
-       );
-     }
-     
-     const actualNObjectives = actualObjectiveKeys.length;
-     
-     // Полезные логи для будущих улучшений (единицы измерения, новые задачи)
-     if (objectives.length > 0) {
-       console.log('Метаданные целей:', objectives.map(obj => `${obj.key} (${obj.unit || 'без единиц'})`));
-     }
-     if (actualNObjectives === 0) {
-       console.warn('Не обнаружено целей оптимизации в данных');
-     }
-    
-
-    
-    let plotArea = null;
-
-    if (processedData.length < 1) {
-      plotArea = <p className="text-center text-red-400">Visualization cannot be built: no data points available.</p>;
-    } else if (actualNObjectives === 1) {
-      // Для 1D задач показываем только значение, без графика
-      const objKey = actualObjectiveKeys[0];
-      const bestValue = processedData[0][objKey];
-      
-      // Извлекаем метаданные для отображения единиц
-      const metadata1D = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      const objectiveInfo = metadata1D?.objectives?.find(obj => obj.key === objKey);
-      const displayName = objectiveInfo ? 
-        (objectiveInfo.unit ? `${objectiveInfo.name} (${objectiveInfo.unit})` : objectiveInfo.name) :
-        objKey.replace('objective', 'Objective ').replace('_', ' ');
-      
-      plotArea = (
-        <div className="text-center p-8 bg-gray-800 rounded-lg">
-          <h3 className="text-xl mb-4">Single Objective Optimization Result</h3>
-          <div className="text-3xl font-bold text-green-400 mb-2">
-            {typeof bestValue === 'number' ? bestValue.toFixed(4) : bestValue}
-          </div>
-          <div className="text-lg text-gray-300">
-            {displayName}
-          </div>
-          {processedData.length > 1 && (
-            <div className="mt-4 text-sm text-gray-400">
-              Found {processedData.length} solutions. Best solution shown above.
-            </div>
-          )}
-        </div>
-      );
-    } else if (actualNObjectives === 2) {
-      // Для 2D задач показываем 2D график - используем только первые 5 точек
-      const [k1, k2] = actualObjectiveKeys;
-      const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
-      // Динамические подписи осей на основе метаданных
-      const getAxisLabel = (key, metadata) => {
-        if (metadata && metadata.objectives) {
-          const objInfo = metadata.objectives.find(obj => obj.key === key);
-          if (objInfo) {
-            return objInfo.unit ? `${objInfo.name} (${objInfo.unit})` : objInfo.name;
-          }
-        }
-        // Фолбэк к статическим правилам
-        if (key.includes('mass')) return 'Total Mass (kg)';
-        if (key.includes('stress')) return 'Stress Ratio';
-        if (key.includes('weight')) return 'Weight (kg)';
-        if (key.includes('strength')) return 'Stress Ratio';
-        if (key.includes('efficiency')) return 'Efficiency (%)';
-        if (key.includes('cost')) return 'Cost ($)';
-        if (key.includes('energy')) return 'Energy (kWh)';
-        if (key.includes('pressure')) return 'Pressure Drop (Pa)';
-        return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      };
-      const metadata = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      // Формируем кастомные hovertext для каждой точки
-      const hoverTexts = plotData.map((p, idx) => {
-        const xVal = p[k1];
-        const yVal = p[k2];
-        // Извлекаем единицы из метаданных
-        const xUnit = (metadata?.objectives?.find(obj => obj.key === k1)?.unit) || '';
-        const yUnit = (metadata?.objectives?.find(obj => obj.key === k2)?.unit) || '';
-        // Тип решения
-        const type = p.type ? `<b>${p.type}</b><br/>` : '';
-        return `${type}${getAxisLabel(k1, metadata)}: <b>${xVal}</b> ${xUnit}<br/>${getAxisLabel(k2, metadata)}: <b>${yVal}</b> ${yUnit}`;
-      });
-      plotArea = (
-        <Plot
-            data={[{
-                x: plotData.map(p => p[k1]),
-                y: plotData.map(p => p[k2]),
-                mode: 'markers+lines',
-                type: 'scatter',
-                marker: { 
-                  size: 10, 
-                  color: '#FFAA00',
-                  line: { color: '#fff', width: 1 }
-                },
-                line: { 
-                  color: '#FFAA00',
-                  width: 2
-                },
-                text: hoverTexts,
-                hoverinfo: 'text',
-                hoverlabel: { bgcolor: '#222', bordercolor: '#FFAA00', font: { color: '#fff' } },
-            }]}
-            layout={{
-              title: {
-                text: 'Pareto Front Visualization (2D)',
-                font: { size: 18, color: '#fff', weight: 'bold' },
-                x: 0.5,
-                xanchor: 'center'
-              },
-              xaxis: {
-                title: getAxisLabel(k1, metadata),
-                color: '#fff',
-                gridcolor: '#666',
-                gridwidth: 1,
-                linecolor: '#fff',
-                linewidth: 2,
-                tickformat: '',
-                tickvals: plotData.map(p => p[k1]),
-                ticktext: plotData.map(p => formatNumber(p[k1])),
-                titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                tickfont: { size: 12, color: '#fff' },
-                tickmode: 'array',
-                tickangle: 0,
-                tickpadding: 8,
-              },
-              yaxis: {
-                title: {
-                  text: getAxisLabel(k2, metadata),
-                  standoff: 30 // увеличенный отступ для подписи оси Y
-                },
-                color: '#fff',
-                gridcolor: '#666',
-                gridwidth: 1,
-                linecolor: '#fff',
-                linewidth: 2,
-                tickformat: '',
-                tickvals: plotData.map(p => p[k2]),
-                ticktext: plotData.map(p => formatNumber(p[k2])),
-                titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                tickfont: { size: 12, color: '#fff' },
-                tickmode: 'array',
-                tickangle: 0,
-                tickpadding: 8,
-              },
-              paper_bgcolor: '#0e1117',
-              font: { color: '#fff' },
-              height: 500,
-              autosize: true,
-              margin: { l: 100, r: 20, t: 60, b: 60 }, // увеличенный левый отступ
-            }}
-            style={{ width: '100%', height: '50vh' }}
-            config={{ responsive: true }}
-        />
-      );
-    } else if (actualNObjectives === 3) {
-      // Для 3D задач показываем 3D график - используем только первые 5 точек
-      const [k1, k2, k3] = actualObjectiveKeys;
-      const plotData = processedData.slice(0, 5); // Ограничиваем до 5 точек как в таблице
-      
-      // Извлекаем метаданные для 3D графика
-      const metadata3D = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-      
-      plotArea = (
-        <Plot
-            data={[{ 
-                x: plotData.map(p => p[k1]), 
-                y: plotData.map(p => p[k2]), 
-                z: plotData.map(p => p[k3]), 
-                mode: 'markers', 
-                type: 'scatter3d', 
-                marker: { 
-                  size: 8, 
-                  color: '#FFAA00',
-                  line: { color: '#fff', width: 1 }
-                } 
-            }]}
-            layout={{
-              title: {
-                text: 'Pareto Front Visualization (3D)',
-                font: { size: 18, color: '#fff', weight: 'bold' },
-                x: 0.5,
-                xanchor: 'center'
-              },
-              scene: {
-                xaxis: { 
-                  title: getAxisLabel(k1, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
-                yaxis: { 
-                  title: getAxisLabel(k2, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
-                zaxis: { 
-                  title: getAxisLabel(k3, metadata3D), 
-                  color: '#fff', 
-                  gridcolor: '#666',
-                  gridwidth: 1,
-                  linecolor: '#fff',
-                  linewidth: 2,
-                  titlefont: { size: 14, color: '#fff', weight: 'bold' },
-                  tickfont: { size: 12, color: '#fff' }
-                },
-              },
-              paper_bgcolor: '#0e1117',
-              font: { color: '#fff' },
-              height: 600,
-              autosize: true,
-              margin: { l: 60, r: 20, t: 60, b: 60 },
-            }}
-            style={{ width: '100%', height: '60vh' }}
-            config={{ responsive: true }}
-        />
-      );
-    } else if (actualNObjectives > 3) {
-      plotArea = <p className="text-center text-yellow-400">Visualization for {actualNObjectives} objectives is not supported yet. Please see the table below for details.</p>;
-    } else {
-      plotArea = <p className="text-center text-red-400">Visualization cannot be built: no objectives detected.</p>;
-    }
-    
-    // Извлекаем метаданные для таблицы
-    const tableMetadata = processedData[0]?.metadata || (apiResponse?.numerical_results?.result?.metadata);
-    
-    return (
-      <>
-        {plotArea}
-        <div className="mt-6 overflow-x-auto">
-          <h3 className="text-lg mb-2">Top 5 Solutions</h3>
-          <table className="min-w-full bg-gray-800 text-white rounded">
-            <thead>
-              <tr>{Object.keys(top5[0] || {}).map(col => (
-                <th key={col} className="px-4 py-2 border-gray-700 border-b text-left">
-                  {getDisplayName(col, tableMetadata)}
-                </th>
-              ))}</tr>
-            </thead>
-            <tbody>
-              {top5.map((row, i) => (
-                <tr key={i} className={i % 2 ? 'bg-gray-700' : 'bg-gray-600'}>
-                  {Object.keys(row).map(col => <td key={col} className="px-4 py-2 border-gray-700 border-b">{typeof row[col] === 'number' ? row[col].toFixed(2) : row[col]}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </>
-    );
-  };
-  
-  // --- Основной JSX с восстановленной логикой Шагов 3 и 4 ---
+  // Rest of the component remains the same...
   return (
-    <div className="min-h-screen bg-[#0e1117] text-white p-6 mx-auto">
-      <header className="flex flex-col items-center mb-8 mt-4">
-        <div className="flex items-center">
-          <Image src="/favicon.png" alt="Logo" width={40} height={40} className="mr-4" />
-          <div>
-            <h1 className="text-3xl font-semibold">Creatoria Demo</h1>
-            <p className="text-base">Smart assistant for invention and optimization</p>
+    <ErrorBoundary>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">C</span>
+            </div>
+            <h1 className="text-xl font-semibold text-gray-900">Creatoria Optimization Wizard</h1>
           </div>
+          <div className="text-sm text-gray-500">Step {step} of 3</div>
         </div>
       </header>
-      
-      <Stepper step={step} setStep={setStep} steps={['Step 1', 'Step 2', 'Step 3', 'Step 4']} />
 
-      <div className="pl-4">
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        <Stepper step={step} steps={["Describe", "Review", "Results"]} />
+        
+        {/* Step 1: Problem Description */}
         {step === 1 && (
-          <div className="flex justify-center">
-            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
-              <div className="flex items-center justify-center mb-4"><h2 className="text-xl">Step 1: Describe your problem or select demo</h2><span className="ml-2">🖉</span></div>
-              <div className="space-y-4">
-                <select className="w-full bg-gray-800 p-2 rounded" value={taskKey} onChange={e => { setTaskKey(e.target.value); setApiResponse(null); }}>
-                  <option value="">-- Select Demo or Custom --</option>
-                  {Object.entries(demoTasks).map(([key, val]) => (<option key={key} value={key}>{val.description.substring(0, 50) + '...'}</option>))}
-                </select>
-                {!taskKey ? (
-                  <>
-                    <textarea rows={4} className="w-full bg-gray-800 p-3 rounded" placeholder="Enter problem description" value={description} onChange={e => setDescription(e.target.value)} />
-                    <button onClick={handleGenerateYaml} disabled={running} className="bg-orange-500 px-4 py-2 rounded hover:bg-orange-600 disabled:bg-gray-500">{running ? 'Generating...' : 'Generate YAML'}</button>
-                  </>
-                ) : (
-                  <>
-                    <p className="w-full bg-gray-900 p-3 rounded">{demoTasks[taskKey].description}</p>
-                    <button onClick={handleSelectDemo} className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">Next →</button>
-                  </>
-                )}
-              </div>
+          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+            <h2 className="text-lg font-semibold mb-4">Describe Your Optimization Problem</h2>
+            
+            {/* Demo Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Quick Start (Optional)
+              </label>
+              <select 
+                value={taskKey} 
+                onChange={(e) => setTaskKey(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a demo task...</option>
+                {Object.entries(demoTasks).map(([key, task]) => (
+                  <option key={key} value={key}>{task.title}</option>
+                ))}
+              </select>
+              {taskKey && (
+                <button 
+                  onClick={handleSelectDemo}
+                  className="mt-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
+                >
+                  Load Demo Task
+                </button>
+              )}
+            </div>
+
+            <div className="border-t pt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Or describe your own problem
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe what you want to optimize..."
+                className="w-full h-32 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleGenerateYaml}
+                disabled={running || !description.trim()}
+                className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {running ? 'Processing...' : 'Generate Configuration'}
+              </button>
             </div>
           </div>
         )}
 
-        {yamlText && step >= 2 && (
-            <div className="flex justify-center my-8">
-                <pre className="bg-gray-900 p-6 rounded-xl shadow-lg max-w-2xl w-full text-white text-md whitespace-pre-wrap">{yamlText}</pre>
-            </div>
+        {/* T16: Translation Review Panel */}
+        {showTranslationReview && translationData && (
+          <div className="mt-6">
+            <TranslationReviewPanel
+              originalText={translationData.original_text}
+              translatedText={translationData.translated_text}
+              detectedLanguage={translationData.detected_language}
+              confidence={translationData.confidence}
+              onConfirm={handleTranslationConfirm}
+              onBack={handleTranslationBack}
+              onTextChange={handleTranslationTextChange}
+              loading={translationLoading}
+              // T16 Phase 2.3: Semantic Analysis props
+              semanticAnalysis={semanticAnalysis}
+              onAnalyzeSemantics={handleAnalyzeSemantics}
+              onUseSemanticResults={handleUseSemanticResults}
+              semanticLoading={semanticLoading}
+              showSemanticAnalysis={true}
+            />
+          </div>
         )}
-        
+
+        {/* Step 2: Review Configuration */}
         {step === 2 && (
-            <div className="flex justify-center">
-                <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-xl w-full">
-                    <div className="flex items-center justify-between mb-4">
-                        <button onClick={() => setStep(1)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
-                        <h2 className="text-xl">Step 2: Configure Goals & Constraints</h2><span className="ml-2">⚙️</span>
-                    </div>
-                    <div className="mb-4"><h3 className="font-medium mb-2">Goals</h3>{goalVariables.map((g, i) => (<div key={i} className="bg-gray-800 p-3 rounded mb-2">{g}</div>))}</div>
-                    <div className="mb-4"><h3 className="font-medium mb-2">Constraints</h3>{constraints.map((c, i) => (<div key={i} className="bg-gray-800 p-3 rounded mb-2">{c}</div>))}</div>
-                    <button onClick={runOptimization} disabled={running} className={`w-full py-2 rounded ${running ? 'bg-gray-500' : 'bg-green-500 hover:bg-green-600'}`}>{running ? `Running... ${progress}%` : 'Run Optimization'}</button>
+          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+            <h2 className="text-lg font-semibold mb-4">Review Generated Configuration</h2>
+
+            {preparser && (
+              <div className="mb-6 border rounded-md p-4 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium">Pre‑parser details</h3>
+                  <span className="text-xs text-gray-500">lang: {preparser.language}</span>
                 </div>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="font-semibold mb-1">Goals (candidates)</div>
+                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
+                      {(preparser.goal_candidates || []).length > 0 ? 
+                        preparser.goal_candidates.map((g, i) => <li key={i}>• {g}</li>) :
+                        <li className="text-gray-400">No goals detected</li>
+                      }
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-semibold mb-1">Constraints (candidates)</div>
+                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
+                      {(preparser.constraint_candidates || []).length > 0 ? 
+                        preparser.constraint_candidates.map((c, i) => <li key={i}>• {c}</li>) :
+                        <li className="text-gray-400">No constraints detected</li>
+                      }
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-semibold mb-1">Ranges</div>
+                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
+                      {(preparser.range_candidates || []).length > 0 ? 
+                        preparser.range_candidates.map((r, i) => <li key={i}>• {r}</li>) :
+                        <li className="text-gray-400">No ranges detected</li>
+                      }
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-semibold mb-1">Units</div>
+                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
+                      {(preparser.unit_mentions || []).length > 0 ? 
+                        preparser.unit_mentions.map((u, i) => <li key={i}>• {u}</li>) :
+                        <li className="text-gray-400">No units detected</li>
+                      }
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-medium mb-2">Configuration YAML</h3>
+                <pre className="bg-gray-50 p-3 rounded text-sm overflow-auto h-64 border">
+                  {yamlText}
+                </pre>
+              </div>
+              
+              <div>
+                <div className="mb-4">
+                  <h3 className="font-medium mb-2">Goals ({goalVariables.length})</h3>
+                  <ul className="bg-gray-50 p-3 rounded text-sm h-24 overflow-auto border">
+                    {goalVariables.map((goal, i) => (
+                      <li key={i} className="mb-1">• {goal}</li>
+                    ))}
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">Constraints ({constraints.length})</h3>
+                  <ul className="bg-gray-50 p-3 rounded text-sm h-24 overflow-auto border">
+                    {constraints.map((constraint, i) => (
+                      <li key={i} className="mb-1">• {constraint}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
+
+            <div className="flex justify-between mt-6">
+              <button
+                onClick={() => setStep(1)}
+                className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 transition-colors"
+              >
+                Back
+              </button>
+              <div className="flex gap-3">
+                {pendingClarification && (
+                  <button
+                    onClick={handleStartClarification}
+                    className="bg-orange-600 text-white px-6 py-2 rounded-md hover:bg-orange-700 transition-colors"
+                  >
+                    Start Clarification
+                  </button>
+                )}
+                <button
+                  onClick={runOptimizationStep}
+                  disabled={running}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {running ? `Running... ${progress}%` : 'Run Optimization'}
+                </button>
+              </div>
+            </div>
+            
+            {running && (
+              <div className="mt-4">
+                <div className="bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
-        {step === 3 && (
-            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full mx-auto">
-              <div className="flex items-center justify-between mb-4">
-                <button onClick={() => setStep(2)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
-                <h2 className="text-xl">Step 3: Results</h2><span className="ml-2">📊</span>
-              </div>
-              {renderResults()}
-              {(apiResponse?.human_readable_report || (taskKey && demoTasks[taskKey]?.explanations)) && (
-                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto">
-                      <h3 className="text-lg font-semibold mb-2">AI Data Summary:</h3>
-                      <p className="text-gray-200">
-                        {apiResponse?.human_readable_report 
-                          ? (apiResponse.human_readable_report.match(/#\s*Резюме\s*([\s\S]*?)\n\n##/)?.[1]?.trim() || apiResponse.explanations?.summary || "Краткое саммари недоступно.")
-                          : (taskKey && demoTasks[taskKey]?.explanations ? demoTasks[taskKey].explanations.join(' ') : "Отчет не был сгенерирован.")
-                        }
-                      </p>
-                  </div>
-              )}
-              <div className="flex justify-end mt-6">
-                  <button onClick={handleFullAnalysis} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500">Full Analysis</button>
+        {/* Step 3: Results */}
+        {step === 3 && apiResponse && (
+          <div className="mt-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Optimization Results</h2>
+            </div>
+            
+            <ResultViewer result={apiResponse} />
+ 
+            <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+              <div className="flex justify-between">
+                <button
+                  onClick={() => setStep(2)}
+                  className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => {
+                    setStep(1);
+                    setApiResponse(null);
+                    setDescription('');
+                    setYamlText('');
+                    setGoalVariables([]);
+                    setConstraints([]);
+                    setTaskKey('');
+                  }}
+                  className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition-colors"
+                >
+                  Start New Optimization
+                </button>
               </div>
             </div>
+          </div>
         )}
+      </main>
 
-        {step === 4 && (
-            <div className="bg-gray-700 rounded-lg shadow-lg p-6 my-6 max-w-4xl w-full mx-auto">
-              <div className="flex items-center justify-between mb-4">
-                  <button onClick={() => setStep(3)} className="bg-[#FFAA00] text-black px-4 py-2 rounded hover:bg-yellow-500 mr-4">← Back</button>
-                  <h2 className="text-xl">Full AI Data Analysis</h2><span className="ml-2">🧠</span>
-              </div>
-              {apiResponse?.human_readable_report && (
-                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left"
-                       dangerouslySetInnerHTML={{ __html: marked.parse(apiResponse.human_readable_report) }}/>
-              )}
-               {apiResponse?.full_analysis && (
-                  <div className="bg-gray-800 rounded-lg p-6 mt-8 shadow-lg max-w-2xl mx-auto text-left">
-                     <h3 className="text-lg font-semibold mb-2">Full AI Data Analysis:</h3>
-                      {apiResponse.full_analysis.summary && <p className="mb-2 text-gray-200"><b>Summary:</b> {apiResponse.full_analysis.summary}</p>}
-                      {apiResponse.full_analysis.trends && <p className="mb-2 text-gray-200"><b>Trends:</b> {apiResponse.full_analysis.trends}</p>}
-                      {apiResponse.full_analysis.anomalies && <p className="mb-2 text-gray-200"><b>Anomalies:</b> {apiResponse.full_analysis.anomalies}</p>}
-                      {apiResponse.full_analysis.recommendations && <p className="mb-2 text-gray-200"><b>Recommendations:</b> {apiResponse.full_analysis.recommendations}</p>}
-                  </div>
-              )}
-            </div>
-        )}
-      </div>
+      {/* Clarification Dialog */}
+      <ClarifierDialog
+        open={clarificationOpen}
+        request={clarificationRequest}
+        history={conversationHistory}
+        statusMap={statusMap}
+        attemptsLeft={attemptsLeft}
+        answer={clarAnswer}
+        setAnswer={setClarAnswer}
+        onSend={handleClarificationSend}
+        loading={clarificationLoading}
+        onPickField={handlePickField}
+        editableFieldIds={clarificationRequest?.ordered_missing?.map(f => f.id) || []}
+        onEditLast={handleEditLast}
+        canEditLast={conversationHistory.some(m => m.role === 'user')}
+      />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
+    </ErrorBoundary>
   );
-}
+} 
