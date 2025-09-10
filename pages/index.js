@@ -637,7 +637,7 @@ export default function CreatoriaWizard() {
                   className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
                   {running ? `Running... ${progress}%` : 
-                   (step2SemanticAnalysis?.ambiguities?.total_count > 0 ? 'Требуется уточнение' : 'Run Optimization')}
+                   (step2SemanticAnalysis?.ambiguities?.total_count > 0 ? 'Clarification Required' : 'Run Optimization')}
                 </button>
               </div>
             </div>

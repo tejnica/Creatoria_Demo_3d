@@ -61,22 +61,22 @@ describe('SmartAnalysisDisplay', () => {
     );
 
     // Check header
-    expect(screen.getByText('Результаты анализа')).toBeInTheDocument();
-    expect(screen.getByText('Высокая (95%)')).toBeInTheDocument();
+    expect(screen.getByText('Analysis Results')).toBeInTheDocument();
+    expect(screen.getByText('High (95%)')).toBeInTheDocument();
 
     // Check recognized section
-    expect(screen.getByText('Что удалось распознать')).toBeInTheDocument();
-    expect(screen.getByText('Цели оптимизации')).toBeInTheDocument();
-    expect(screen.getByText('Переменные')).toBeInTheDocument();
-    expect(screen.getByText('Ограничения')).toBeInTheDocument();
-    expect(screen.getByText('Материалы')).toBeInTheDocument();
+    expect(screen.getByText('Successfully Recognized')).toBeInTheDocument();
+    expect(screen.getByText('Optimization Goals')).toBeInTheDocument();
+    expect(screen.getByText('Variables')).toBeInTheDocument();
+    expect(screen.getByText('Constraints')).toBeInTheDocument();
+    expect(screen.getByText('Materials')).toBeInTheDocument();
 
     // Check counts (using more specific selectors)
     expect(screen.getByText('2')).toBeInTheDocument(); // objectives count
     expect(screen.getByText('3')).toBeInTheDocument(); // variables count
     // Check for constraints and materials without duplicate "1" issue
-    const constraintsSection = screen.getByText('Ограничения').closest('.bg-white');
-    const materialsSection = screen.getByText('Материалы').closest('.bg-white');
+    const constraintsSection = screen.getByText('Constraints').closest('.bg-white');
+    const materialsSection = screen.getByText('Materials').closest('.bg-white');
     expect(constraintsSection).toBeInTheDocument();
     expect(materialsSection).toBeInTheDocument();
   });
@@ -90,11 +90,11 @@ describe('SmartAnalysisDisplay', () => {
     );
 
     // Check ambiguities section
-    expect(screen.getByText('Что нужно уточнить')).toBeInTheDocument();
+    expect(screen.getByText('Needs Clarification')).toBeInTheDocument();
     expect(screen.getByText('undefined bounds')).toBeInTheDocument(); // lowercase from category
     expect(screen.getByText('missing units')).toBeInTheDocument(); // lowercase from category
     expect(screen.getByText('Variable bounds not specified')).toBeInTheDocument();
-    expect(screen.getByText('Важно')).toBeInTheDocument(); // high priority badge
+    expect(screen.getByText('High Priority')).toBeInTheDocument(); // high priority badge
   });
 
   test('shows clarification button when ambiguities exist', () => {
@@ -108,7 +108,7 @@ describe('SmartAnalysisDisplay', () => {
       />
     );
 
-    const clarifyButton = screen.getByText('Начать уточнение');
+    const clarifyButton = screen.getByText('Start Clarification');
     expect(clarifyButton).toBeInTheDocument();
 
     fireEvent.click(clarifyButton);
@@ -128,8 +128,8 @@ describe('SmartAnalysisDisplay', () => {
       />
     );
 
-    expect(screen.getByText('✅ Все данные распознаны корректно')).toBeInTheDocument();
-    expect(screen.queryByText('Начать уточнение')).not.toBeInTheDocument();
+    expect(screen.getByText('✅ All data recognized correctly')).toBeInTheDocument();
+    expect(screen.queryByText('Start Clarification')).not.toBeInTheDocument();
   });
 
   test('falls back to preparser data when semantic analysis not available', () => {
@@ -140,9 +140,9 @@ describe('SmartAnalysisDisplay', () => {
       />
     );
 
-    expect(screen.getByText('Цели (найденные)')).toBeInTheDocument();
-    expect(screen.getByText('Ограничения (найденные)')).toBeInTheDocument();
-    expect(screen.getByText('Единицы измерения')).toBeInTheDocument();
+    expect(screen.getByText('Goals (detected)')).toBeInTheDocument();
+    expect(screen.getByText('Constraints (detected)')).toBeInTheDocument();
+    expect(screen.getByText('Units')).toBeInTheDocument();
   });
 
   test('handles empty data gracefully', () => {
