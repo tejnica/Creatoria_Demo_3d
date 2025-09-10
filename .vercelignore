@@ -1,0 +1,21 @@
+# Ignore dev/build artifacts for Vercel
+archive/
+backup/
+docs/
+memory-bank/
+**/test_*.py
+Backend-Core/**/debug_*.py
+Backend-Core/**/quick_*.py
+project-structure-audit-*.md
+*.log
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+node_modules/
+.next/
+.vercel/
+coverage/
+cypress/videos/
+cypress/screenshots/
+.DS_Store

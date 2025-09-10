@@ -5,6 +5,7 @@ import demoTasks from '../src/demoTasks.json';
 import Stepper from '../src/components/Stepper';
 import ClarifierDialog from '../src/components/ClarifierDialog';
 import TranslationReviewPanel from '../src/components/TranslationReviewPanel';
+import SmartAnalysisDisplay from '../src/components/SmartAnalysisDisplay';
 import { generateYaml, generateYamlEnhanced, runOptimization, startClarification, answerClarification, translateText, analyzeSemantics } from '../src/api/solver';
 import { marked } from 'marked';
 import ResultViewer from '../src/components/ResultViewer';
@@ -47,6 +48,9 @@ export default function CreatoriaWizard() {
   // T16 Phase 2.3: Semantic Analysis states
   const [semanticAnalysis, setSemanticAnalysis] = useState(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
+  
+  // T16 Phase 3: Smart Analysis states for Step 2
+  const [step2SemanticAnalysis, setStep2SemanticAnalysis] = useState(null);
 
   // Toast notifications
   const { toasts, addToast, removeToast } = useToast();
@@ -192,8 +196,14 @@ export default function CreatoriaWizard() {
       setShowTranslationReview(false);
       setSessionId(enhancedResult.semantic_analysis?.session_id);
       
-      // Запускаем clarification loop с засеянными данными
-      const clarificationResult = await startClarification();
+      // T16 Phase 3: Сохраняем семантический анализ для Step 2
+      setStep2SemanticAnalysis(analysisResult);
+      
+      // Запускаем clarification loop с засеянными данными и solver_input из семантического анализа
+      const clarificationResult = await startClarification({
+        solver_input: enhancedResult.solver_input,
+        session_id: enhancedResult.semantic_analysis?.session_id
+      });
       if (clarificationResult.need_clarification) {
         const req = clarificationResult.clarification_request;
         setClarificationRequest(req);
@@ -213,6 +223,9 @@ export default function CreatoriaWizard() {
           : [];
         setGoalVariables(objList.map(extractDescriptions));
         setConstraints((clarificationResult.solver_input?.constraints || []).map(extractDescriptions));
+        
+        // T16 Phase 3: Сохраняем семантический анализ для Step 2
+        setStep2SemanticAnalysis(analysisResult);
         setStep(2);
       }
       
@@ -345,6 +358,15 @@ export default function CreatoriaWizard() {
               : (result.solver_input?.objective ? [result.solver_input.objective] : []));
         setGoalVariables(objList2.map(extractDescriptions));
         setConstraints((result.solver_input?.constraints || []).map(extractDescriptions));
+        
+        // T16 Phase 3: Очищаем ambiguities так как они решены
+        if (step2SemanticAnalysis?.ambiguities?.total_count > 0) {
+          setStep2SemanticAnalysis({
+            ...step2SemanticAnalysis,
+            ambiguities: { total_count: 0, high_priority: [], medium_priority: [], low_priority: [] }
+          });
+        }
+        
         setStep(2);
         addToast('✅ All clarifications completed! Configuration ready.', 'success');
       }
@@ -552,50 +574,15 @@ export default function CreatoriaWizard() {
           <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
             <h2 className="text-lg font-semibold mb-4">Review Generated Configuration</h2>
 
-            {preparser && (
-              <div className="mb-6 border rounded-md p-4 bg-gray-50">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium">Pre‑parser details</h3>
-                  <span className="text-xs text-gray-500">lang: {preparser.language}</span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="font-semibold mb-1">Goals (candidates)</div>
-                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
-                      {(preparser.goal_candidates || []).length > 0 ? 
-                        preparser.goal_candidates.map((g, i) => <li key={i}>• {g}</li>) :
-                        <li className="text-gray-400">No goals detected</li>
-                      }
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="font-semibold mb-1">Constraints (candidates)</div>
-                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
-                      {(preparser.constraint_candidates || []).length > 0 ? 
-                        preparser.constraint_candidates.map((c, i) => <li key={i}>• {c}</li>) :
-                        <li className="text-gray-400">No constraints detected</li>
-                      }
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="font-semibold mb-1">Ranges</div>
-                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
-                      {(preparser.range_candidates || []).length > 0 ? 
-                        preparser.range_candidates.map((r, i) => <li key={i}>• {r}</li>) :
-                        <li className="text-gray-400">No ranges detected</li>
-                      }
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="font-semibold mb-1">Units</div>
-                    <ul className="bg-white border rounded p-2 max-h-20 overflow-auto">
-                      {(preparser.unit_mentions || []).length > 0 ? 
-                        preparser.unit_mentions.map((u, i) => <li key={i}>• {u}</li>) :
-                        <li className="text-gray-400">No units detected</li>
-                      }
-                    </ul>
-                  </div>
-                </div>
+            {/* T16 Phase 3: Smart Analysis Display */}
+            {(step2SemanticAnalysis || preparser) && (
+              <div className="mb-6">
+                <SmartAnalysisDisplay
+                  semanticAnalysis={step2SemanticAnalysis}
+                  preparser={preparser}
+                  onStartClarification={handleStartClarification}
+                  hasAmbiguities={step2SemanticAnalysis?.ambiguities?.total_count > 0}
+                />
               </div>
             )}
             
@@ -636,7 +623,7 @@ export default function CreatoriaWizard() {
                 Back
               </button>
               <div className="flex gap-3">
-                {pendingClarification && (
+                {(pendingClarification || step2SemanticAnalysis?.ambiguities?.total_count > 0) && (
                   <button
                     onClick={handleStartClarification}
                     className="bg-orange-600 text-white px-6 py-2 rounded-md hover:bg-orange-700 transition-colors"
@@ -646,10 +633,11 @@ export default function CreatoriaWizard() {
                 )}
                 <button
                   onClick={runOptimizationStep}
-                  disabled={running}
+                  disabled={running || (step2SemanticAnalysis?.ambiguities?.total_count > 0)}
                   className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
-                  {running ? `Running... ${progress}%` : 'Run Optimization'}
+                  {running ? `Running... ${progress}%` : 
+                   (step2SemanticAnalysis?.ambiguities?.total_count > 0 ? 'Требуется уточнение' : 'Run Optimization')}
                 </button>
               </div>
             </div>
@@ -719,6 +707,14 @@ export default function CreatoriaWizard() {
         editableFieldIds={clarificationRequest?.ordered_missing?.map(f => f.id) || []}
         onEditLast={handleEditLast}
         canEditLast={conversationHistory.some(m => m.role === 'user')}
+        onClose={() => {
+          setClarificationOpen(false);
+          setClarificationRequest(null);
+          setConversationHistory([]);
+          setClarAnswer('');
+          setStatusMap({});
+          setSessionId(null);
+        }}
       />
 
       {/* Toast Notifications */}

@@ -5,5 +5,9 @@
       "src": "package.json",
       "use": "@vercel/next"
     }
-  ]
+  ],
+  "env": {
+    "BACKEND_URL": "https://agent-template-edl8.onrender.com",
+    "PY_BACKEND_URL": "https://agent-template-edl8.onrender.com"
+  }
 } 
