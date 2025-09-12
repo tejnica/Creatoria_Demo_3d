@@ -11,6 +11,7 @@ import { marked } from 'marked';
 import ResultViewer from '../src/components/ResultViewer';
 import ErrorBoundary from '../src/components/ErrorBoundary';
 import { useToast, ToastContainer } from '../src/components/Toast';
+import ThemeToggle from '../src/components/ThemeToggle';
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 
@@ -478,17 +479,20 @@ export default function CreatoriaWizard() {
   // Rest of the component remains the same...
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">C</span>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Creatoria Optimization Wizard</h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Creatoria Optimization Wizard</h1>
           </div>
-          <div className="text-sm text-gray-500">Step {step} of 3</div>
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-gray-500">Step {step} of 3</div>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -498,8 +502,8 @@ export default function CreatoriaWizard() {
         
         {/* Step 1: Problem Description */}
         {step === 1 && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
-            <h2 className="text-lg font-semibold mb-4">Describe Your Optimization Problem</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mt-6 theme-transition border border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Describe Your Optimization Problem</h2>
             
             {/* Demo Selection */}
             <div className="mb-6">
@@ -571,8 +575,8 @@ export default function CreatoriaWizard() {
 
         {/* Step 2: Review Configuration */}
         {step === 2 && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
-            <h2 className="text-lg font-semibold mb-4">Review Generated Configuration</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mt-6 theme-transition border border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Review Generated Configuration</h2>
 
             {/* T16 Phase 3: Smart Analysis Display */}
             {(step2SemanticAnalysis || preparser) && (
@@ -588,16 +592,16 @@ export default function CreatoriaWizard() {
             
             <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <h3 className="font-medium mb-2">Configuration YAML</h3>
-                <pre className="bg-gray-50 p-3 rounded text-sm overflow-auto h-64 border">
+                <h3 className="font-medium mb-2 text-gray-900 dark:text-white">Configuration YAML</h3>
+                <pre className="bg-gray-50 dark:bg-gray-700 p-3 rounded text-sm overflow-auto h-64 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100">
                   {yamlText}
                 </pre>
               </div>
               
               <div>
                 <div className="mb-4">
-                  <h3 className="font-medium mb-2">Goals ({goalVariables.length})</h3>
-                  <ul className="bg-gray-50 p-3 rounded text-sm h-24 overflow-auto border">
+                  <h3 className="font-medium mb-2 text-gray-900 dark:text-white">Goals ({goalVariables.length})</h3>
+                  <ul className="bg-gray-50 dark:bg-gray-700 p-3 rounded text-sm h-24 overflow-auto border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100">
                     {goalVariables.map((goal, i) => (
                       <li key={i} className="mb-1">• {goal}</li>
                     ))}
@@ -605,8 +609,8 @@ export default function CreatoriaWizard() {
                 </div>
                 
                 <div>
-                  <h3 className="font-medium mb-2">Constraints ({constraints.length})</h3>
-                  <ul className="bg-gray-50 p-3 rounded text-sm h-24 overflow-auto border">
+                  <h3 className="font-medium mb-2 text-gray-900 dark:text-white">Constraints ({constraints.length})</h3>
+                  <ul className="bg-gray-50 dark:bg-gray-700 p-3 rounded text-sm h-24 overflow-auto border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100">
                     {constraints.map((constraint, i) => (
                       <li key={i} className="mb-1">• {constraint}</li>
                     ))}
@@ -644,7 +648,7 @@ export default function CreatoriaWizard() {
             
             {running && (
               <div className="mt-4">
-                <div className="bg-gray-200 rounded-full h-2">
+                <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div 
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${progress}%` }}
@@ -658,13 +662,13 @@ export default function CreatoriaWizard() {
         {/* Step 3: Results */}
         {step === 3 && apiResponse && (
           <div className="mt-6">
-            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Optimization Results</h2>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Optimization Results</h2>
             </div>
             
             <ResultViewer result={apiResponse} />
  
-            <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mt-6 theme-transition border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between">
                 <button
                   onClick={() => setStep(2)}
@@ -723,3 +727,6 @@ export default function CreatoriaWizard() {
     </ErrorBoundary>
   );
 } 
+
+
+

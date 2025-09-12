@@ -19,7 +19,7 @@ const SemanticAnalysisDisplay = ({
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div className="flex items-center space-x-2">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-          <span className="text-blue-800 font-medium">Выполняется семантический анализ...</span>
+          <span className="text-blue-800 font-medium">Performing semantic analysis...</span>
         </div>
       </div>
     );
@@ -32,15 +32,15 @@ const SemanticAnalysisDisplay = ({
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-gray-900">Семантический анализ</h3>
-            <p className="text-sm text-gray-600">Извлечь структурированные данные из текста</p>
+            <h3 className="text-sm font-medium text-gray-900">Semantic Analysis</h3>
+            <p className="text-sm text-gray-600">Extract structured data from text</p>
           </div>
           {onAnalyze && (
             <button
               onClick={onAnalyze}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
             >
-              Анализировать
+              Analyze
             </button>
           )}
         </div>
@@ -56,8 +56,8 @@ const SemanticAnalysisDisplay = ({
         <div className="flex items-center space-x-2">
           <div className="text-red-600">⚠️</div>
           <div>
-            <h3 className="text-sm font-medium text-red-900">Ошибка семантического анализа</h3>
-            <p className="text-sm text-red-700">{analysisResult.error || 'Не удалось выполнить анализ'}</p>
+            <h3 className="text-sm font-medium text-red-900">Semantic Analysis Error</h3>
+            <p className="text-sm text-red-700">{analysisResult.error || 'Failed to perform analysis'}</p>
           </div>
         </div>
         {onAnalyze && (
@@ -65,7 +65,7 @@ const SemanticAnalysisDisplay = ({
             onClick={onAnalyze}
             className="mt-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
           >
-            Повторить анализ
+            Retry Analysis
           </button>
         )}
       </div>
@@ -77,8 +77,8 @@ const SemanticAnalysisDisplay = ({
     extraction_confidence >= 0.6 ? 'text-yellow-600' : 'text-red-600';
 
   const confidenceLabel =
-    extraction_confidence >= 0.8 ? 'Высокая' :
-    extraction_confidence >= 0.6 ? 'Средняя' : 'Низкая';
+    extraction_confidence >= 0.8 ? 'High' :
+    extraction_confidence >= 0.6 ? 'Medium' : 'Low';
 
   return (
     <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
@@ -87,9 +87,9 @@ const SemanticAnalysisDisplay = ({
         <div className="flex items-center space-x-2">
           <div className="text-green-600">✅</div>
           <div>
-            <h3 className="text-sm font-medium text-green-900">Семантический анализ завершен</h3>
+            <h3 className="text-sm font-medium text-green-900">Semantic analysis completed</h3>
             <p className="text-sm text-green-700">
-              Уверенность: <span className={`font-medium ${confidenceColor}`}>
+              Confidence: <span className={`font-medium ${confidenceColor}`}>
                 {confidenceLabel} ({Math.round((extraction_confidence || 0) * 100)}%)
               </span>
             </p>
@@ -101,14 +101,14 @@ const SemanticAnalysisDisplay = ({
             onClick={() => setExpanded(!expanded)}
             className="text-green-700 hover:text-green-900 text-sm font-medium"
           >
-            {expanded ? 'Свернуть' : 'Подробнее'}
+            {expanded ? 'Collapse' : 'Details'}
           </button>
           {onUseResults && (
             <button
               onClick={() => onUseResults(analysisResult)}
               className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
             >
-              Использовать результаты
+              Use Results
             </button>
           )}
         </div>
@@ -119,15 +119,15 @@ const SemanticAnalysisDisplay = ({
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div className="text-center">
             <div className="font-medium text-gray-900">{problem.variables?.length || 0}</div>
-            <div className="text-gray-600">Переменных</div>
+            <div className="text-gray-600">Variables</div>
           </div>
           <div className="text-center">
             <div className="font-medium text-gray-900">{problem.objectives?.length || 0}</div>
-            <div className="text-gray-600">Целей</div>
+            <div className="text-gray-600">Goals</div>
           </div>
           <div className="text-center">
             <div className="font-medium text-gray-900">{problem.constraints?.length || 0}</div>
-            <div className="text-gray-600">Ограничений</div>
+            <div className="text-gray-600">Constraints</div>
           </div>
         </div>
       )}
@@ -139,9 +139,9 @@ const SemanticAnalysisDisplay = ({
             <div className="text-yellow-600">⚠️</div>
             <div>
               <span className="text-sm font-medium text-yellow-900">
-                Обнаружено {ambiguities.total_count} неопределенност{ambiguities.total_count === 1 ? 'ь' : ambiguities.total_count < 5 ? 'и' : 'ей'}
+                Found {ambiguities.total_count} ambiguit{ambiguities.total_count === 1 ? 'y' : 'ies'}
               </span>
-              <p className="text-sm text-yellow-700">Рекомендуется уточнить данные для лучших результатов</p>
+              <p className="text-sm text-yellow-700">Clarification recommended for better results</p>
             </div>
           </div>
         </div>
@@ -153,7 +153,7 @@ const SemanticAnalysisDisplay = ({
           {/* Variables */}
           {problem.variables && problem.variables.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Переменные:</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Variables:</h4>
               <div className="space-y-1">
                 {problem.variables.map((variable, idx) => (
                   <div key={idx} className="text-sm text-gray-700 bg-white rounded px-2 py-1">
@@ -174,7 +174,7 @@ const SemanticAnalysisDisplay = ({
           {/* Objectives */}
           {problem.objectives && problem.objectives.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Цели:</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Goals:</h4>
               <div className="space-y-1">
                 {problem.objectives.map((objective, idx) => (
                   <div key={idx} className="text-sm text-gray-700 bg-white rounded px-2 py-1">
@@ -190,7 +190,7 @@ const SemanticAnalysisDisplay = ({
           {/* Constraints */}
           {problem.constraints && problem.constraints.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Ограничения:</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Constraints:</h4>
               <div className="space-y-1">
                 {problem.constraints.map((constraint, idx) => (
                   <div key={idx} className="text-sm text-gray-700 bg-white rounded px-2 py-1">
@@ -208,13 +208,13 @@ const SemanticAnalysisDisplay = ({
             <div className="flex space-x-4">
               {problem.domain && (
                 <div>
-                  <span className="text-sm font-medium text-gray-900">Область:</span>
+                  <span className="text-sm font-medium text-gray-900">Domain:</span>
                   <span className="text-sm text-gray-700 ml-1">{problem.domain}</span>
                 </div>
               )}
               {problem.context?.materials && problem.context.materials.length > 0 && (
                 <div>
-                  <span className="text-sm font-medium text-gray-900">Материалы:</span>
+                  <span className="text-sm font-medium text-gray-900">Materials:</span>
                   <div className="ml-1">
                     {problem.context.materials.map((material, idx) => {
                       const materialName = typeof material === 'string' ? material : material.name;
@@ -232,7 +232,7 @@ const SemanticAnalysisDisplay = ({
                                 </div>
                               ))}
                               {Object.keys(properties).length > 3 && (
-                                <div className="text-gray-500">...и {Object.keys(properties).length - 3} других свойств</div>
+                                <div className="text-gray-500">...and {Object.keys(properties).length - 3} other properties</div>
                               )}
                             </div>
                           )}

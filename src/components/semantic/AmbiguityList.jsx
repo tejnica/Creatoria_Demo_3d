@@ -16,7 +16,7 @@ const AmbiguityList = ({
       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
         <div className="flex items-center space-x-2">
           <div className="text-green-600">✅</div>
-          <span className="text-sm text-green-800">Неопределенности не обнаружены</span>
+          <span className="text-sm text-green-800">No ambiguities detected</span>
         </div>
       </div>
     );
@@ -51,13 +51,13 @@ const AmbiguityList = ({
   const getPriorityLabel = (priority) => {
     switch (priority) {
       case 'high_priority':
-        return 'Высокий';
+        return 'High';
       case 'medium_priority':
-        return 'Средний';
+        return 'Medium';
       case 'low_priority':
-        return 'Низкий';
+        return 'Low';
       default:
-        return 'Неизвестный';
+        return 'Unknown';
     }
   };
 
@@ -72,14 +72,14 @@ const AmbiguityList = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-gray-900">
-            Неопределенности ({ambiguities.total_count})
+            Ambiguities ({ambiguities.total_count})
           </h4>
           {onStartClarification && (
             <button
               onClick={onStartClarification}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
             >
-              Уточнить
+              Clarify
             </button>
           )}
         </div>
@@ -96,7 +96,7 @@ const AmbiguityList = ({
           
           {allAmbiguities.length > 3 && (
             <div className="text-xs text-gray-500 text-center py-1">
-              +{allAmbiguities.length - 3} еще...
+              +{allAmbiguities.length - 3} more...
             </div>
           )}
         </div>
@@ -109,9 +109,9 @@ const AmbiguityList = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">Обнаруженные неопределенности</h3>
+          <h3 className="text-lg font-medium text-gray-900">Detected Ambiguities</h3>
           <p className="text-sm text-gray-600">
-            Найдено {ambiguities.total_count} неопределенност{ambiguities.total_count === 1 ? 'ь' : ambiguities.total_count < 5 ? 'и' : 'ей'}
+            Found {ambiguities.total_count} ambiguit{ambiguities.total_count === 1 ? 'y' : 'ies'}
           </p>
         </div>
         
@@ -120,7 +120,7 @@ const AmbiguityList = ({
             onClick={onStartClarification}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium transition-colors"
           >
-            Начать уточнение
+            Start Clarification
           </button>
         )}
       </div>
@@ -143,7 +143,7 @@ const AmbiguityList = ({
               <div className="flex items-center space-x-2">
                 <span>{getPriorityIcon(priorityLevel)}</span>
                 <h4 className="text-sm font-medium text-gray-900">
-                  {getPriorityLabel(priorityLevel)} приоритет ({items.length})
+                  {getPriorityLabel(priorityLevel)} priority ({items.length})
                 </h4>
               </div>
               
@@ -156,16 +156,16 @@ const AmbiguityList = ({
                       
                       {/* Type */}
                       <div className="text-xs text-gray-600">
-                        Тип: <span className="font-mono">{ambiguity.type}</span>
+                        Type: <span className="font-mono">{ambiguity.type}</span>
                         {ambiguity.field_id && (
-                          <span> • Поле: <span className="font-mono">{ambiguity.field_id}</span></span>
+                          <span> • Field: <span className="font-mono">{ambiguity.field_id}</span></span>
                         )}
                       </div>
                       
                       {/* Suggestions */}
                       {ambiguity.suggestions && ambiguity.suggestions.length > 0 && (
                         <div className="text-xs">
-                          <span className="text-gray-600">Предложения:</span>
+                          <span className="text-gray-600">Suggestions:</span>
                           <ul className="list-disc list-inside text-gray-700 ml-2">
                             {ambiguity.suggestions.map((suggestion, suggIdx) => (
                               <li key={suggIdx}>{suggestion}</li>
@@ -180,7 +180,7 @@ const AmbiguityList = ({
                           onClick={() => onResolve(ambiguity)}
                           className="text-xs bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 px-2 py-1 rounded transition-colors"
                         >
-                          Разрешить
+                          Resolve
                         </button>
                       )}
                     </div>

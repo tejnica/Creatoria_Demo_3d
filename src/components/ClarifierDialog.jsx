@@ -25,7 +25,7 @@ export default function ClarifierDialog({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [history.length, request]);
+  }, [history?.length, request]);
 
   // автофокус на поле ввода при открытии/смене вопроса
   useEffect(() => {

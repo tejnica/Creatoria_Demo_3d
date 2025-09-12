@@ -159,7 +159,7 @@ const TranslationReviewPanel = ({
       {/* T16 Phase 2.3: Semantic Analysis Section */}
       {showSemanticAnalysis && (
         <div className="mt-6 space-y-4">
-          <h3 className="text-lg font-medium text-gray-900">Семантический анализ</h3>
+          <h3 className="text-lg font-medium text-gray-900">Semantic Analysis</h3>
           
           <SemanticAnalysisDisplay
             analysisResult={semanticAnalysis}

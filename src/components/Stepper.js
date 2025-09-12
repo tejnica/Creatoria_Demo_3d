@@ -2,58 +2,39 @@
 import React from 'react';
 
 export default function Stepper({ step, steps }) {
-  // Контейнер степпера: горизонтальный flex
-  const containerStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    margin: '1.5rem auto',
-    maxWidth: '800px',
-  };
-
-  // Обёртка для одного шага
-  const stepWrapperStyle = { display: 'flex', alignItems: 'center' };
-
-  // Круг с номером шага
-  const circleStyle = (active) => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    backgroundColor: active ? '#F59E0B' : '#374151',
-    color: active ? '#000' : '#fff',
-    fontWeight: 'bold',
-    transition: 'background 0.2s',
-  });
-
-  // Стиль для подписи шага
-  const labelStyle = (active) => ({
-    marginLeft: '8px',
-    fontSize: '0.75rem',
-    color: active ? '#FBBF24' : '#9CA3AF',
-  });
-
-  // Линия между шагами
-  const connectorStyle = {
-    flex: 1,
-    height: '2px',
-    backgroundColor: '#4B5563',
-    margin: '0 12px',
-  };
-
   return (
-    <div style={containerStyle}>
+    <div className="flex items-center justify-between mx-auto my-6 max-w-3xl theme-transition">
       {steps.map((label, idx) => {
         const isActive = step === idx + 1;
         return (
           <React.Fragment key={idx}>
-            <div style={stepWrapperStyle}>
-              <div style={circleStyle(isActive)}>{idx + 1}</div>
-              <span style={labelStyle(isActive)}>{label}</span>
+            <div className="flex items-center">
+              <div 
+                className={`
+                  flex items-center justify-center w-8 h-8 rounded-full font-bold transition-colors duration-200
+                  ${isActive 
+                    ? 'bg-amber-500 text-black dark:bg-amber-400 dark:text-gray-900' 
+                    : 'bg-gray-600 text-white dark:bg-gray-500 dark:text-gray-100'
+                  }
+                `}
+              >
+                {idx + 1}
+              </div>
+              <span 
+                className={`
+                  ml-2 text-xs transition-colors duration-200
+                  ${isActive 
+                    ? 'text-amber-500 font-medium dark:text-amber-400' 
+                    : 'text-gray-500 dark:text-gray-400'
+                  }
+                `}
+              >
+                {label}
+              </span>
             </div>
-            {idx < steps.length - 1 && <div style={connectorStyle} />}
+            {idx < steps.length - 1 && (
+              <div className="flex-1 h-0.5 bg-gray-600 dark:bg-gray-500 mx-3 theme-transition" />
+            )}
           </React.Fragment>
         );
       })}
